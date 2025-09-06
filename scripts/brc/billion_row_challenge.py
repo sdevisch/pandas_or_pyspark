@@ -29,6 +29,7 @@ from datetime import datetime
 from pathlib import Path
 import glob
 from typing import List, Optional
+import os as _os
 
 from unipandas import configure_backend
 from unipandas.io import read_csv, read_parquet
@@ -145,7 +146,12 @@ def main():
         # Read all chunks, supporting parquet or csv
         t0 = time.perf_counter()
         frames: List[Frame] = []
+        total_bytes = 0
         for p in chunks:
+            try:
+                total_bytes += p.stat().st_size
+            except Exception:
+                pass
             if p.suffix.lower() == ".parquet":
                 frames.append(read_parquet(str(p)))
             else:
@@ -191,7 +197,15 @@ def main():
         )
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
+    headers = [
+        "backend",
+        "version",
+        "op",
+        "read_s",
+        "compute_s",
+        "rows",
+        "used_cores",
+    ]
     rows_out: List[List[str]] = [
         [
             r.backend,
@@ -204,7 +218,19 @@ def main():
         ]
         for r in results
     ]
-    lines = ["# Billion Row Challenge (scaffold)", "", f"Generated at: {ts}", "", "```text", *format_fixed(headers, rows_out), "```", ""]
+    lines = [
+        "# Billion Row Challenge (scaffold)",
+        "",
+        f"Generated at: {ts}",
+        "",
+        f"- num_chunks: {len(chunks)}",
+        f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
+        "",
+        "```text",
+        *format_fixed(headers, rows_out),
+        "```",
+        "",
+    ]
     OUT.write_text("\n".join(lines))
     print("Wrote", OUT)
 
