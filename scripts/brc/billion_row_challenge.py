@@ -46,7 +46,10 @@ except Exception:
     import sys as _sys
     from pathlib import Path as _Path
 
-    _sys.path.append(str(_Path(__file__).resolve().parents[0]))
+    _here = _Path(__file__).resolve()
+    # Add both 'scripts/brc' and 'scripts' to sys.path so we can import utils
+    _sys.path.append(str(_here.parents[0]))  # scripts/brc
+    _sys.path.append(str(_here.parents[1]))  # scripts
     from utils import (  # type: ignore
         get_backend_version as utils_get_backend_version,
         used_cores_for_backend as utils_used_cores_for_backend,
