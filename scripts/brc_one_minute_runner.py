@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+import glob
 from pathlib import Path
 from typing import Dict, List
 
@@ -71,6 +72,11 @@ def main():
     parser.add_argument("--budget", type=float, default=60.0, help="Seconds per attempt")
     parser.add_argument("--operation", choices=["filter", "groupby"], default="filter")
     parser.add_argument("--data-glob", default=None, help="Optional glob to use existing data instead of generating")
+    parser.add_argument(
+        "--data-glob-template",
+        default=None,
+        help="Optional template with {size} placeholder, e.g. 'data/brc_scales/parquet_{size}/*.parquet'",
+    )
     args = parser.parse_args()
 
     headers = ["backend", "max_rows_within_1min"]
@@ -79,7 +85,13 @@ def main():
     for backend in Backends:
         max_rows = 0
         for size in SCALES:
-            ok = can_process_within(backend, size, args.budget, args.operation, args.data_glob)
+            glob_arg = args.data_glob
+            if args.data_glob_template:
+                glob_arg = args.data_glob_template.format(size=size)
+                # If no files exist for this size, skip without breaking
+                if not glob.glob(glob_arg):
+                    continue
+            ok = can_process_within(backend, size, args.budget, args.operation, glob_arg)
             if ok:
                 max_rows = size
             else:
