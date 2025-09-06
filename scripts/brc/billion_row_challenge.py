@@ -29,6 +29,7 @@ from datetime import datetime
 from pathlib import Path
 import glob
 from typing import List, Optional
+import os as _os
 
 from unipandas import configure_backend
 from unipandas.io import read_csv, read_parquet
@@ -69,13 +70,16 @@ Backends = ALL_BACKENDS
 
 def ensure_chunks(rows_per_chunk: int, num_chunks: int, seed: int = 123) -> List[Path]:
     DATA.mkdir(exist_ok=True)
+    # Use a size-specific subdirectory so different runs don't reuse tiny files
+    out_dir = DATA / f"brc_{rows_per_chunk}"
+    out_dir.mkdir(exist_ok=True)
     paths: List[Path] = []
     import csv
     import random
 
     random.seed(seed)
     for i in range(num_chunks):
-        p = DATA / f"brc_{i:04d}.csv"
+        p = out_dir / f"brc_{rows_per_chunk}_{i:04d}.csv"
         if not p.exists():
             with p.open("w", newline="") as f:
                 w = csv.writer(f)
@@ -126,6 +130,8 @@ def main():
     parser.add_argument("--num-chunks", type=int, default=1, help="Number of chunks to generate")
     parser.add_argument("--operation", default="filter", choices=["filter", "groupby"], help="Operation to run")
     parser.add_argument("--data-glob", default=None, help="If set, use existing chunks (parquet or csv) matching this glob instead of generating")
+    parser.add_argument("--only-backend", default=None, help="If set, run only this backend (overrides internal Backends loop)")
+    parser.add_argument("--md-out", default=None, help="Optional markdown output path to write report to")
     args = parser.parse_args()
 
     if args.data_glob:
@@ -137,7 +143,10 @@ def main():
 
     results: List[Result] = []
 
-    for backend in Backends:
+    backends_to_run = Backends
+    if args.only_backend:
+        backends_to_run = [args.only_backend]
+    for backend in backends_to_run:
         if not check_available(backend):
             continue
         configure_backend(backend)
@@ -145,7 +154,12 @@ def main():
         # Read all chunks, supporting parquet or csv
         t0 = time.perf_counter()
         frames: List[Frame] = []
+        total_bytes = 0
         for p in chunks:
+            try:
+                total_bytes += p.stat().st_size
+            except Exception:
+                pass
             if p.suffix.lower() == ".parquet":
                 frames.append(read_parquet(str(p)))
             else:
@@ -191,7 +205,15 @@ def main():
         )
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
+    headers = [
+        "backend",
+        "version",
+        "op",
+        "read_s",
+        "compute_s",
+        "rows",
+        "used_cores",
+    ]
     rows_out: List[List[str]] = [
         [
             r.backend,
@@ -204,9 +226,22 @@ def main():
         ]
         for r in results
     ]
-    lines = ["# Billion Row Challenge (scaffold)", "", f"Generated at: {ts}", "", "```text", *format_fixed(headers, rows_out), "```", ""]
-    OUT.write_text("\n".join(lines))
-    print("Wrote", OUT)
+    lines = [
+        "# Billion Row Challenge (scaffold)",
+        "",
+        f"Generated at: {ts}",
+        "",
+        f"- num_chunks: {len(chunks)}",
+        f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
+        "",
+        "```text",
+        *format_fixed(headers, rows_out),
+        "```",
+        "",
+    ]
+    out_path = Path(args.md_out) if args.md_out else OUT
+    out_path.write_text("\n".join(lines))
+    print("Wrote", out_path)
 
 
 if __name__ == "__main__":
