@@ -161,6 +161,7 @@ def parse_arguments():
         ("--rows-per-chunk", dict(type=int, default=1_000_000)),
         ("--num-chunks", dict(type=int, default=1)),
         ("--operation", dict(default="filter", choices=["filter", "groupby"])),
+        ("--materialize", dict(default="head", choices=["head", "count", "all"])),
         ("--data-glob", dict(default=None)),
         ("--only-backend", dict(default=None)),
         ("--md-out", dict(default=None)),
@@ -224,15 +225,74 @@ def measure_read(chunks: List[Path], backend: str) -> tuple[Frame, float, int]:
     return combined, t1 - t0, total_bytes
 
 
-def run_operation(combined: Frame, op: str) -> tuple[int, float]:
+def _materialize_count(backend_df) -> int:
+    """Return row count for different backends without collecting all rows.
+
+    This forces full evaluation while avoiding a full to_pandas transfer.
+    """
+    try:
+        import pandas as _pd  # type: ignore
+        if isinstance(backend_df, _pd.DataFrame):
+            return int(len(backend_df.index))
+    except Exception:
+        pass
+    try:
+        import dask.dataframe as _dd  # type: ignore
+        from dask.dataframe import DataFrame as _DaskDF  # type: ignore
+        if isinstance(backend_df, _DaskDF):
+            return int(backend_df.shape[0].compute())
+    except Exception:
+        pass
+    try:
+        import pyspark.pandas as _ps  # type: ignore
+        from pyspark.pandas.frame import DataFrame as _PsDF  # type: ignore
+        if isinstance(backend_df, _PsDF):
+            sdf = backend_df.to_spark()
+            return int(sdf.count())
+    except Exception:
+        pass
+    try:
+        import polars as _pl  # type: ignore
+        if isinstance(backend_df, _pl.DataFrame):
+            return int(backend_df.height)
+    except Exception:
+        pass
+    try:
+        import duckdb as _duck  # type: ignore
+        if hasattr(backend_df, "to_df"):
+            # relation: COUNT(*) into pandas scalar
+            con = _duck.connect()
+            try:
+                rel = backend_df
+                return int(con.execute("SELECT COUNT(*) FROM rel").fetchone()[0])
+            finally:
+                con.close()
+    except Exception:
+        pass
+    # Fallback
+    try:
+        return int(len(backend_df))
+    except Exception:
+        return 0
+
+
+def run_operation(combined: Frame, op: str, materialize: str) -> tuple[int, float]:
     """Execute the chosen operation and materialize a small ``head``.
 
     Returns the observed row count in pandas and the compute duration.
     """
     t2 = time.perf_counter()
     out = combined.query("x > 0 and y < 0") if op == "filter" else combined.groupby("cat").agg({"x": "sum", "y": "mean"})
-    pdf = out.head(10_000_000).to_pandas()
-    rows = len(pdf.index) if hasattr(pdf, "index") else 0
+    if materialize == "head":
+        pdf = out.head(10_000_000).to_pandas()
+        rows = len(pdf.index) if hasattr(pdf, "index") else 0
+    elif materialize == "count":
+        # Force full evaluation by counting rows without transferring all data
+        backend_obj = out.to_backend()
+        rows = _materialize_count(backend_obj)
+    else:  # materialize == "all"
+        pdf_all = out.to_pandas()
+        rows = len(pdf_all.index) if hasattr(pdf_all, "index") else 0
     t3 = time.perf_counter()
     return rows, t3 - t2
 
@@ -243,7 +303,10 @@ def run_backend(backend: str, chunks: List[Path], op: str) -> Result:
     combined, read_s, _ = measure_read(chunks, backend)
     used = _used_cores_for_backend(backend)
     ver = get_backend_version(backend)
-    rows, compute_s = run_operation(combined, op)
+    # materialize mode from CLI via environment captured upstream; fall back to head
+    import os as __os
+    mat = __os.environ.get("BRC_MATERIALIZE", "head")
+    rows, compute_s = run_operation(combined, op, mat)
     return Result(backend=backend, op=op, read_s=read_s, compute_s=compute_s, rows=rows, used_cores=used, version=ver)
 
 
@@ -285,6 +348,8 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
 
 def main():
     args = parse_arguments()
+    # Also export materialize for subprocess-based runners, while keeping CLI handling here
+    os.environ["BRC_MATERIALIZE"] = args.materialize
     chunks = resolve_chunks(args)
     results: List[Result] = []
     backends_to_run = [args.only_backend] if args.only_backend else Backends
