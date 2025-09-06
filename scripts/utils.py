@@ -4,7 +4,7 @@ import os
 from typing import Dict, List, Optional
 
 
-Backends = ["pandas", "dask", "pyspark"]
+Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
 
 
 def get_backend_version(backend: str) -> Optional[str]:
@@ -21,6 +21,14 @@ def get_backend_version(backend: str) -> Optional[str]:
             import pyspark  # type: ignore
 
             return getattr(pyspark, "__version__", None)
+        if backend == "polars":
+            import polars as pl  # type: ignore
+
+            return getattr(pl, "__version__", None)
+        if backend == "duckdb":
+            import duckdb  # type: ignore
+
+            return getattr(duckdb, "__version__", None)
     except Exception:
         return None
     return None
@@ -55,6 +63,12 @@ def used_cores_for_backend(backend: str) -> Optional[int]:
             except Exception:
                 pass
             return None
+        if backend == "polars":
+            # Polars executes single-process by default
+            return 1
+        if backend == "duckdb":
+            # DuckDB runs in-process
+            return 1
     except Exception:
         return None
     return None
@@ -68,6 +82,10 @@ def check_available(backend: str) -> bool:
             __import__("dask.dataframe")
         elif backend == "pyspark":
             __import__("pyspark.pandas")
+        elif backend == "polars":
+            __import__("polars")
+        elif backend == "duckdb":
+            __import__("duckdb")
         else:
             return False
         return True

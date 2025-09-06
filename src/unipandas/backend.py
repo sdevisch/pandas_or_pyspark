@@ -7,6 +7,8 @@ Supported backends:
 - "pandas": CPython, single-machine pandas
 - "dask": Dask DataFrame for parallel/distributed
 - "pyspark": pandas API on Spark (pyspark.pandas)
+- "polars": Polars DataFrame
+- "duckdb": DuckDB (reads into pandas for unified ops)
 """
 
 from __future__ import annotations
@@ -51,6 +53,10 @@ def _detect_backend_by_environment() -> Optional[str]:
         return "dask"
     if normalized in {"pyspark", "spark", "ps", "pandas_on_spark"}:
         return "pyspark"
+    if normalized in {"polars", "pl"}:
+        return "polars"
+    if normalized in {"duckdb", "duck"}:
+        return "duckdb"
     return None
 
 
@@ -87,11 +93,15 @@ def _detect_backend_heuristic() -> str:
     ):
         return "dask"
 
-    # 4) If only one of dask/pyspark is installed, prefer that for scalability
+    # 4) If only one of dask/pyspark/polars/duckdb is installed, prefer those for scalability
     if _import_optional("pyspark.pandas") is not None:
         return "pyspark"
     if _import_optional("dask.dataframe") is not None:
         return "dask"
+    if _import_optional("polars") is not None:
+        return "polars"
+    if _import_optional("duckdb") is not None:
+        return "duckdb"
 
     # 5) Fallback to pandas
     return "pandas"
@@ -116,6 +126,10 @@ def configure_backend(name: str) -> Backend:
         value = "dask"
     elif normalized in {"pyspark", "spark", "ps", "pandas_on_spark"}:
         value = "pyspark"
+    elif normalized in {"polars", "pl"}:
+        value = "polars"
+    elif normalized in {"duckdb", "duck"}:
+        value = "duckdb"
     else:
         raise ValueError(
             f"Unknown backend '{name}'. Valid options are 'pandas', 'dask', 'pyspark'."
@@ -153,6 +167,20 @@ def import_pyspark_pandas():
     return mod
 
 
+def import_polars():
+    mod = _import_optional("polars")
+    if mod is None:
+        raise RuntimeError("polars is not installed. Please install 'polars'.")
+    return mod
+
+
+def import_duckdb():
+    mod = _import_optional("duckdb")
+    if mod is None:
+        raise RuntimeError("duckdb is not installed. Please install 'duckdb'.")
+    return mod
+
+
 def is_pandas() -> bool:
     return current_backend_name() == "pandas"
 
@@ -163,6 +191,14 @@ def is_dask() -> bool:
 
 def is_pyspark() -> bool:
     return current_backend_name() == "pyspark"
+
+
+def is_polars() -> bool:
+    return current_backend_name() == "polars"
+
+
+def is_duckdb() -> bool:
+    return current_backend_name() == "duckdb"
 
 
 def infer_backend_from_object(obj) -> Optional[str]:
@@ -191,6 +227,14 @@ def infer_backend_from_object(obj) -> Optional[str]:
 
         if isinstance(obj, PsDF):
             return "pyspark"
+    except Exception:
+        pass
+
+    try:
+        import polars as pl  # type: ignore
+
+        if isinstance(obj, pl.DataFrame):
+            return "polars"
     except Exception:
         pass
 

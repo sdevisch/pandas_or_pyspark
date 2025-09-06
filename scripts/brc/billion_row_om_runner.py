@@ -47,9 +47,9 @@ REPORTS.mkdir(exist_ok=True)
 OUT = REPORTS / "billion_row_om.md"
 
 PY = sys.executable or "python3"  # Use current interpreter; fallback to python3
-SCRIPT = ROOT / "scripts" / "billion_row_challenge.py"  # Delegate script path
+SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"  # Delegate script path
 
-Backends = ["pandas", "dask", "pyspark"]  # Execution backends under test
+Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backends under test
 ORDERS = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]  # Escalating sizes (rows)
 DEFAULT_BUDGET_S = 180.0  # Per (backend,size) wall-clock budget in seconds
 
