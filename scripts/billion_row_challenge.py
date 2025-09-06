@@ -31,7 +31,7 @@ import glob
 from typing import List, Optional
 
 from unipandas import configure_backend
-from unipandas.io import read_csv
+from unipandas.io import read_csv, read_parquet
 from unipandas.frame import Frame
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -171,7 +171,7 @@ def main():
     parser.add_argument("--rows-per-chunk", type=int, default=1_000_000, help="Rows per CSV chunk")
     parser.add_argument("--num-chunks", type=int, default=1, help="Number of chunks to generate")
     parser.add_argument("--operation", default="filter", choices=["filter", "groupby"], help="Operation to run")
-    parser.add_argument("--data-glob", default=None, help="If set, use existing CSV chunks matching this glob instead of generating")
+    parser.add_argument("--data-glob", default=None, help="If set, use existing chunks (parquet or csv) matching this glob instead of generating")
     args = parser.parse_args()
 
     if args.data_glob:
@@ -188,9 +188,14 @@ def main():
             continue
         configure_backend(backend)
 
-        # Read all chunks via read_csv (glob-like)
+        # Read all chunks, supporting parquet or csv
         t0 = time.perf_counter()
-        frames = [read_csv(str(p)) for p in chunks]
+        frames: List[Frame] = []
+        for p in chunks:
+            if p.suffix.lower() == ".parquet":
+                frames.append(read_parquet(str(p)))
+            else:
+                frames.append(read_csv(str(p)))
         # simple concat with backend-specific tooling
         if backend == "pyspark":
             import pyspark.pandas as ps  # type: ignore
