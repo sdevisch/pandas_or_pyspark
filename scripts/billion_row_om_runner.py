@@ -50,7 +50,7 @@ PY = sys.executable or "python3"  # Use current interpreter; fallback to python3
 SCRIPT = ROOT / "scripts" / "billion_row_challenge.py"  # Delegate script path
 
 Backends = ["pandas", "dask", "pyspark"]  # Execution backends under test
-ORDERS = [1_000, 10_000, 100_000, 1_000_000]  # Escalating sizes (rows)
+ORDERS = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]  # Escalating sizes (rows)
 DEFAULT_BUDGET_S = 180.0  # Per (backend,size) wall-clock budget in seconds
 
 
@@ -172,23 +172,31 @@ def main():
 
     parser = argparse.ArgumentParser(description="Order-of-magnitude BRC runner with per-step 3-minute cap")
     parser.add_argument("--budgets", type=float, default=DEFAULT_BUDGET_S, help="Seconds per backend-size step")
+    parser.add_argument("--data-glob-template", default=None, help="Optional template with {size} placeholder for pre-generated data")
     args = parser.parse_args()
 
     budget = float(args.budgets)
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     rows: List[List[str]] = []
-    headers = ["backend", "rows", "read_s", "compute_s", "ok"]
+    headers = ["backend", "rows(sci)", "read_s", "compute_s", "ok"]
 
     for backend in Backends:
         proceed = True  # As soon as a step fails, we stop escalating for this backend
         for size in ORDERS:
             if not proceed:
                 break
+            # If a data glob template is provided, skip sizes with no data
+            entry = None
+            if 'args' in locals() and args.data_glob_template:
+                import glob as _glob
+                glob_arg = args.data_glob_template.format(size=size)
+                if not _glob.glob(glob_arg):
+                    continue
             entry = run_once(backend, size, budget)
             rows.append([
                 backend,
-                f"{size}",
+                f"{size:.1e}",
                 f"{entry.read_s:.4f}" if entry.read_s is not None else "-",
                 f"{entry.compute_s:.4f}" if entry.compute_s is not None else "-",
                 "yes" if entry.ok else "no",
