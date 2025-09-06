@@ -1,0 +1,14 @@
+# Data and local artifacts
+data/
+*.pyc
+__pycache__/
+
+# Local venvs (keep repo clean)
+pandas_pyspark/
+
+# Build metadata
+src/unipandas.egg-info/
+dist/
+build/
+
+
