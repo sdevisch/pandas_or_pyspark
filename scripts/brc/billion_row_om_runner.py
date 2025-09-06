@@ -95,6 +95,8 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
         "1",
         "--operation",
         "filter",
+        "--only-backend",
+        backend,
     ]
     start = time.time()
     try:
@@ -113,13 +115,16 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
         compute_s = None
         if report_path.exists():
             lines = report_path.read_text().strip().splitlines()
-            # Scan from bottom to find most recent line beginning with backend name
-            for line in lines[::-1]:
+            # find header values to compute MB/s
+            total_bytes = None
+            for i, line in enumerate(lines[::-1]):
+                if line.startswith("- total_bytes:"):
+                    try:
+                        total_bytes = int(line.split(":", 1)[1].strip())
+                    except Exception:
+                        total_bytes = None
                 if line.startswith(backend):
                     parts = line.split()
-                    # Expected columns:
-                    # backend  version  op  read_s  compute_s  rows  used_cores
-                    # We capture read_s and compute_s for summary; ignore the rest here
                     if len(parts) >= 6:
                         try:
                             read_s = float(parts[3])
