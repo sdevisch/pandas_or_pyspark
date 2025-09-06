@@ -82,8 +82,12 @@ Project map
   - `scripts/bench_backends.py`: times the same workload across pandas, Dask, and pandas-on-Spark; writes Markdown via `--md-out`
   - `scripts/relational_bench.py`: larger datasets; join and concat timings per backend; writes `reports/relational_benchmark.md`
   - `scripts/compat_matrix.py`: generates a compatibility matrix showing which operations work across backends; writes `reports/compatibility.md`
-  - `scripts/billion_row_challenge.py`: scalable scaffold for a BRC-style run (chunked CSVs, filter/groupby) with fixed-width report
-  - `scripts/billion_row_om_runner.py`: order-of-magnitude runner (1e3→1e6 rows) with a per-step timeout; writes `reports/billion_row_om.md`
+  - BRC (Billion Row Challenge) scripts live under `scripts/brc/` and write to `reports/brc/`
+    - `billion_row_challenge.py`: scalable scaffold for a BRC-style run (chunked Parquet/CSV, filter/groupby)
+    - `billion_row_om_runner.py`: order-of-magnitude runner up to 100M rows with per-step timeout
+    - `brc_generate_data.py`: generate chunked Parquet/CSV
+    - `brc_generate_all_scales.py`: generate 1M/10M/100M/1B datasets with chunking
+    - `brc_scale_runner.py`, `brc_one_minute_runner.py`: scale and 1-minute runners
 
 - Reports (generated)
   - `reports/benchmark.md`: aggregated results from `run_benchmark`
