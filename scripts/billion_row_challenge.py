@@ -27,6 +27,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import glob
 from typing import List, Optional
 
 from unipandas import configure_backend
@@ -61,6 +62,11 @@ def ensure_chunks(rows_per_chunk: int, num_chunks: int, seed: int = 123) -> List
                     w.writerow([rid, random.randint(-1000, 1000), random.randint(-1000, 1000), random.choice(["x", "y", "z"])])
         paths.append(p)
     return paths
+
+
+def existing_chunks(glob_pattern: str) -> List[Path]:
+    """Return existing chunk paths matching the provided glob pattern."""
+    return [Path(p) for p in glob.glob(glob_pattern)]
 
 
 @dataclass
@@ -165,9 +171,15 @@ def main():
     parser.add_argument("--rows-per-chunk", type=int, default=1_000_000, help="Rows per CSV chunk")
     parser.add_argument("--num-chunks", type=int, default=1, help="Number of chunks to generate")
     parser.add_argument("--operation", default="filter", choices=["filter", "groupby"], help="Operation to run")
+    parser.add_argument("--data-glob", default=None, help="If set, use existing CSV chunks matching this glob instead of generating")
     args = parser.parse_args()
 
-    chunks = ensure_chunks(args.rows_per_chunk, args.num_chunks)
+    if args.data_glob:
+        chunks = existing_chunks(args.data_glob)
+        if not chunks:
+            raise SystemExit(f"No files matched --data-glob '{args.data_glob}'")
+    else:
+        chunks = ensure_chunks(args.rows_per_chunk, args.num_chunks)
 
     results: List[Result] = []
 
