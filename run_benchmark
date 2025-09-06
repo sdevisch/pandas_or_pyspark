@@ -8,8 +8,11 @@ from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
-REPORT = ROOT / "benchmark.md"
+REPORTS = ROOT / "reports"
+REPORTS.mkdir(exist_ok=True)
+REPORT = REPORTS / "benchmark.md"
 SCRIPT = ROOT / "scripts" / "bench_backends.py"
+CODE_FILE = "scripts/examples.py"
 
 PY = sys.executable or "python3"
 
@@ -51,7 +54,7 @@ def main():
         f.write(f"# unipandas benchmarks\n\nGenerated at: {ts}\n\n")
 
     # Scenario 1
-    out1 = ROOT / "benchmark_s1.md"
+    out1 = REPORTS / "benchmark_s1.md"
     cmd1 = [
         PY,
         str(SCRIPT),
@@ -62,7 +65,7 @@ def main():
         "--groupby",
         "cat",
         "--code-file",
-        "examples.py",
+        CODE_FILE,
         "--md-out",
         str(out1),
     ]
@@ -72,7 +75,7 @@ def main():
         f.write(out1.read_text())
 
     # Scenario 2
-    out2 = ROOT / "benchmark_s2.md"
+    out2 = REPORTS / "benchmark_s2.md"
     cmd2 = [
         PY,
         str(SCRIPT),
@@ -83,7 +86,7 @@ def main():
         "--groupby",
         "cat",
         "--code-file",
-        "examples.py",
+        CODE_FILE,
         "--md-out",
         str(out2),
     ]

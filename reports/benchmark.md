@@ -1,6 +1,6 @@
 # unipandas benchmarks
 
-Generated at: 2025-09-06 07:51:47
+Generated at: 2025-09-06 07:54:55
 
 
 ## Scenario 1: example.csv assign+query+groupby
@@ -10,9 +10,9 @@ Generated at: 2025-09-06 07:51:47
 ## Run context
 
 - Data file: `/Users/sdevisch/repos/pandas_or_pyspark/data/example.csv`
-- Ran at: 2025-09-06 07:51:53
+- Ran at: 2025-09-06 07:55:01
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
-- Code file: `examples.py`
+- Code file: `scripts/examples.py`
 - System available cores: 11
 - Args: assign=True, query='a > 0', groupby='cat'
 
@@ -29,9 +29,9 @@ Generated at: 2025-09-06 07:51:47
 ```text
 backend  version   load_s  compute_s  rows  used_cores
 -------  --------  ------  ---------  ----  ----------
-pandas   2.2.2     0.0211     0.0000     3           1
-dask     2024.5.1  0.0043     0.0355     3          11
-pyspark  3.5.1     4.1557     0.6005     3          11
+pandas   2.2.2     0.0220     0.0000     3           1
+dask     2024.5.1  0.0048     0.0358     3          11
+pyspark  3.5.1     4.1830     0.5883     3          11
 ```
 
 ## Scenario 2: example_small.csv assign+query+groupby
@@ -41,9 +41,9 @@ pyspark  3.5.1     4.1557     0.6005     3          11
 ## Run context
 
 - Data file: `/Users/sdevisch/repos/pandas_or_pyspark/data/example_small.csv`
-- Ran at: 2025-09-06 07:51:58
+- Ran at: 2025-09-06 07:55:06
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
-- Code file: `examples.py`
+- Code file: `scripts/examples.py`
 - System available cores: 11
 - Args: assign=True, query='a >= 0', groupby='cat'
 
@@ -60,7 +60,7 @@ pyspark  3.5.1     4.1557     0.6005     3          11
 ```text
 backend  version   load_s  compute_s  rows  used_cores
 -------  --------  ------  ---------  ----  ----------
-pandas   2.2.2     0.0008     0.0000     2           1
-dask     2024.5.1  0.0033     0.0081     2          11
-pyspark  3.5.1     3.7435     0.4470     2          11
+pandas   2.2.2     0.0010     0.0000     2           1
+dask     2024.5.1  0.0034     0.0085     2          11
+pyspark  3.5.1     3.6849     0.4876     2          11
 ```
