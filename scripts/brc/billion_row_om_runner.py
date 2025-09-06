@@ -195,12 +195,50 @@ def main():
                 break
             # If a data glob template is provided, skip sizes with no data
             entry = None
-            if 'args' in locals() and args.data_glob_template:
-                import glob as _glob
-                glob_arg = args.data_glob_template.format(size=size)
-                if not _glob.glob(glob_arg):
-                    continue
-            entry = run_once(backend, size, budget)
+            glob_arg = None
+            # Prefer Parquet per-size if present: data/brc_scales/parquet_{size}/*.parquet
+            import glob as _glob
+            parquet_glob = str(ROOT / f"data/brc_{size}" / "*.parquet")
+            if _glob.glob(parquet_glob):
+                # Run challenge using existing Parquet data
+                cmd_env = os.environ.copy()
+                cmd_env["UNIPANDAS_BACKEND"] = backend
+                cmd = [
+                    PY,
+                    str(SCRIPT),
+                    "--data-glob",
+                    parquet_glob,
+                    "--operation",
+                    "filter",
+                    "--only-backend",
+                    backend,
+                ]
+                try:
+                    subprocess.run(cmd, env=cmd_env, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=budget)
+                except subprocess.TimeoutExpired:
+                    entry = Entry(backend=backend, rows=size, read_s=None, compute_s=None, ok=False)
+                except Exception:
+                    entry = Entry(backend=backend, rows=size, read_s=None, compute_s=None, ok=False)
+                else:
+                    # Parse report
+                    report_path = REPORTS / "billion_row_challenge.md"
+                    read_s = None
+                    compute_s = None
+                    if report_path.exists():
+                        lines = report_path.read_text().strip().splitlines()
+                        for line in lines[::-1]:
+                            if line.startswith(backend):
+                                parts = line.split()
+                                if len(parts) >= 6:
+                                    try:
+                                        read_s = float(parts[3])
+                                        compute_s = float(parts[4])
+                                    except Exception:
+                                        pass
+                                break
+                    entry = Entry(backend=backend, rows=size, read_s=read_s, compute_s=compute_s, ok=True)
+            else:
+                entry = run_once(backend, size, budget)
             rows.append([
                 backend,
                 f"{size:.1e}",
