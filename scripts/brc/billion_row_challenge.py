@@ -21,6 +21,41 @@ Outputs:
 - A Markdown file `reports/brc/billion_row_challenge.md` by default, or a path
   provided via `--md-out`. The header includes the number of chunks and total
   bytes, to support plausibility/throughput analysis.
+
+Usage
+-----
+Basic run (generate small CSV chunks and filter):
+    python scripts/brc/billion_row_challenge.py --rows-per-chunk 100000 --num-chunks 2 --operation filter
+
+Run on existing Parquet chunks:
+    python scripts/brc/billion_row_challenge.py --data-glob "data/brc_100000/*.parquet" --operation groupby
+
+Run a single backend explicitly:
+    UNIPANDAS_BACKEND=pyspark python scripts/brc/billion_row_challenge.py --only-backend pyspark
+
+Force full compute (instead of head) and write report to custom path:
+    python scripts/brc/billion_row_challenge.py --materialize count --md-out reports/brc/custom.md
+
+CLI Flags
+---------
+- --rows-per-chunk: Integer row count per generated CSV chunk (default 1_000_000)
+- --num-chunks: Number of chunks to generate (default 1)
+- --operation: "filter" or "groupby" (default "filter")
+- --materialize: "head" (default), "count" (full compute w/o full transfer), or "all"
+- --data-glob: Glob pattern for existing inputs (Parquet or CSV)
+- --only-backend: Restrict run to a single backend
+- --md-out: Output markdown path
+
+Environment
+-----------
+- UNIPANDAS_BACKEND: Preferred backend (pandas, dask, pyspark, polars, duckdb)
+- BRC_MATERIALIZE: Materialization override (head|count|all). Set automatically by --materialize.
+
+Notes
+-----
+- CSV generation uses size-specific directories to avoid reusing small files for larger sizes.
+- For lazy engines (Dask, pandas-on-Spark), "count" is recommended to force full compute without
+  a full to_pandas transfer.
 """
 
 from __future__ import annotations
@@ -329,11 +364,16 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     """Write a fixed-width Markdown report including header context and timings."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
+    # All results share the same op/materialize for a given run
+    op_val = results[0].op if results else "-"
+    mat_val = os.environ.get("BRC_MATERIALIZE", "head")
     lines = [
         "# Billion Row Challenge (scaffold)",
         "",
         f"Generated at: {ts}",
         "",
+        f"- operation: {op_val}",
+        f"- materialize: {mat_val}",
         f"- num_chunks: {len(chunks)}",
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
         "",
@@ -358,6 +398,7 @@ def main():
             continue
         results.append(run_backend(backend, chunks, args.operation))
     write_report(chunks, results, args.md_out)
+    print(f"Ran BRC with operation={args.operation} materialize={args.materialize}")
 
 
 if __name__ == "__main__":
