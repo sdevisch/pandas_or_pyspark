@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""
-Billion Row Challenge (BRC) scaffold
-------------------------------------
+"""Billion Row Challenge (BRC) scaffold.
 
-Generates chunked CSV data and runs a simple operation (filter or groupby)
-across whichever backend is selected via `UNIPANDAS_BACKEND` (pandas, dask,
-or pandas-on-Spark). Results are written as a fixed-width Markdown table
-under `reports/billion_row_challenge.md`.
+This script provides a safe, repeatable harness for running a small set of
+pandas-like operations across multiple data processing backends. It focuses on
+two core operations — a boolean filter and a simple groupby/aggregation — and
+logs the time to read/concatenate input chunks as well as to compute the
+operation. Results are written as a fixed-width table for alignment in
+Markdown.
 
-Design notes
-------------
-- Data generation is chunked to allow scaling up without holding everything in
-  memory; each chunk is an independent CSV file.
-- Concatenation uses backend-native concat where applicable to avoid eager
-  collection into local memory.
-- We materialize a `head` to pandas to ensure compute happens for lazy engines.
-  For huge outputs, `head` limits transfer size to the driver.
+Key properties:
+- Data generation is chunked and size-specific (by rows-per-chunk). This avoids
+  loading all rows into memory and prevents accidentally reusing small files
+  for large sizes.
+- Reading uses backend-appropriate IO and concatenation, but we always expose a
+  unified API through `unipandas.Frame`.
+- For lazy engines (e.g., Dask, pandas-on-Spark), we materialize a `head(...)`
+  to force execution while limiting transfer size to the driver.
+
+Outputs:
+- A Markdown file `reports/brc/billion_row_challenge.md` by default, or a path
+  provided via `--md-out`. The header includes the number of chunks and total
+  bytes, to support plausibility/throughput analysis.
 """
 
 from __future__ import annotations
@@ -68,28 +73,33 @@ OUT = REPORTS / "billion_row_challenge.md"
 Backends = ALL_BACKENDS
 
 
-def ensure_chunks(rows_per_chunk: int, num_chunks: int, seed: int = 123) -> List[Path]:
+def _chunks_out_dir(rows_per_chunk: int) -> Path:
     DATA.mkdir(exist_ok=True)
-    # Use a size-specific subdirectory so different runs don't reuse tiny files
-    out_dir = DATA / f"brc_{rows_per_chunk}"
-    out_dir.mkdir(exist_ok=True)
-    paths: List[Path] = []
-    import csv
-    import random
+    out = DATA / f"brc_{rows_per_chunk}"
+    out.mkdir(exist_ok=True)
+    return out
 
-    random.seed(seed)
-    for i in range(num_chunks):
-        p = out_dir / f"brc_{rows_per_chunk}_{i:04d}.csv"
-        if not p.exists():
-            with p.open("w", newline="") as f:
-                w = csv.writer(f)
-                w.writerow(["id", "x", "y", "cat"])
-                base = i * rows_per_chunk
-                for j in range(rows_per_chunk):
-                    rid = base + j
-                    w.writerow([rid, random.randint(-1000, 1000), random.randint(-1000, 1000), random.choice(["x", "y", "z"])])
-        paths.append(p)
-    return paths
+
+def _write_rows_csv(path: Path, rows: int, base: int, rnd) -> None:
+    import csv
+    with path.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["id", "x", "y", "cat"])
+        for j in range(rows):
+            w.writerow([base + j, rnd.randint(-1000, 1000), rnd.randint(-1000, 1000), rnd.choice(["x", "y", "z"])])
+
+
+def _maybe_generate_chunk(out_dir: Path, rows_per_chunk: int, i: int, rnd) -> Path:
+    p = out_dir / f"brc_{rows_per_chunk}_{i:04d}.csv"
+    if not p.exists():
+        _write_rows_csv(p, rows_per_chunk, i * rows_per_chunk, rnd)
+    return p
+
+
+def ensure_chunks(rows_per_chunk: int, num_chunks: int, seed: int = 123) -> List[Path]:
+    out_dir = _chunks_out_dir(rows_per_chunk)
+    rnd = __import__("random").Random(seed)
+    return [_maybe_generate_chunk(out_dir, rows_per_chunk, i, rnd) for i in range(num_chunks)]
 
 
 def existing_chunks(glob_pattern: str) -> List[Path]:
@@ -99,6 +109,18 @@ def existing_chunks(glob_pattern: str) -> List[Path]:
 
 @dataclass
 class Result:
+    """Timing and metadata for a single backend run.
+
+    Attributes
+    ----------
+    backend: Name of the backend measured (e.g., ``"pandas"``, ``"dask"``).
+    op: Operation key, ``"filter"`` or ``"groupby"``.
+    read_s: Seconds spent reading and concatenating chunks.
+    compute_s: Seconds spent executing the operation and materializing ``head``.
+    rows: Number of rows observed in the materialized pandas output.
+    used_cores: Approximate worker parallelism (if detectable) for the backend.
+    version: Backend version string, if detectable.
+    """
     backend: str
     op: str
     read_s: float
@@ -124,108 +146,126 @@ def format_fixed(headers: List[str], rows: List[List[str]]) -> List[str]:
     return utils_format_fixed(headers, rows)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Billion Row Challenge (safe scaffold)")
-    parser.add_argument("--rows-per-chunk", type=int, default=1_000_000, help="Rows per CSV chunk")
-    parser.add_argument("--num-chunks", type=int, default=1, help="Number of chunks to generate")
-    parser.add_argument("--operation", default="filter", choices=["filter", "groupby"], help="Operation to run")
-    parser.add_argument("--data-glob", default=None, help="If set, use existing chunks (parquet or csv) matching this glob instead of generating")
-    parser.add_argument("--only-backend", default=None, help="If set, run only this backend (overrides internal Backends loop)")
-    parser.add_argument("--md-out", default=None, help="Optional markdown output path to write report to")
-    args = parser.parse_args()
+def parse_arguments():
+    """Parse CLI arguments and return a namespace.
 
+    Returns
+    -------
+    argparse.Namespace
+        The parsed arguments including rows-per-chunk, number of chunks,
+        operation, optional existing data glob, optional specific backend,
+        and optional Markdown output path.
+    """
+    p = argparse.ArgumentParser(description="Billion Row Challenge (safe scaffold)")
+    args_list = [
+        ("--rows-per-chunk", dict(type=int, default=1_000_000)),
+        ("--num-chunks", dict(type=int, default=1)),
+        ("--operation", dict(default="filter", choices=["filter", "groupby"])),
+        ("--data-glob", dict(default=None)),
+        ("--only-backend", dict(default=None)),
+        ("--md-out", dict(default=None)),
+    ]
+    for name, kw in args_list:
+        p.add_argument(name, **kw)
+    return p.parse_args()
+
+
+def resolve_chunks(args) -> List[Path]:
+    """Resolve chunk paths from args.
+
+    If ``--data-glob`` is provided, expand it to a list of existing files and
+    fail if none found. Otherwise, generate size-specific CSV chunks on demand.
+    """
     if args.data_glob:
-        chunks = existing_chunks(args.data_glob)
-        if not chunks:
+        paths = existing_chunks(args.data_glob)
+        if not paths:
             raise SystemExit(f"No files matched --data-glob '{args.data_glob}'")
-    else:
-        chunks = ensure_chunks(args.rows_per_chunk, args.num_chunks)
+        return paths
+    return ensure_chunks(args.rows_per_chunk, args.num_chunks)
 
-    results: List[Result] = []
 
-    backends_to_run = Backends
-    if args.only_backend:
-        backends_to_run = [args.only_backend]
-    for backend in backends_to_run:
-        if not check_available(backend):
-            continue
-        configure_backend(backend)
+def read_frames_for_backend(chunks: List[Path], backend: str) -> List[Frame]:
+    """Read chunk files into backend dataframes and wrap as ``Frame``.
 
-        # Read all chunks, supporting parquet or csv
-        t0 = time.perf_counter()
-        frames: List[Frame] = []
-        total_bytes = 0
-        for p in chunks:
-            try:
-                total_bytes += p.stat().st_size
-            except Exception:
-                pass
-            if p.suffix.lower() == ".parquet":
-                frames.append(read_parquet(str(p)))
-            else:
-                frames.append(read_csv(str(p)))
-        # simple concat with backend-specific tooling
-        if backend == "pyspark":
-            import pyspark.pandas as ps  # type: ignore
-
-            combined = Frame(ps.concat([f.to_backend() for f in frames]))
-        elif backend == "dask":
-            import dask.dataframe as dd  # type: ignore
-
-            combined = Frame(dd.concat([f.to_backend() for f in frames]))
+    The IO path supports both Parquet and CSV based on each chunk's file
+    extension.
+    """
+    frames: List[Frame] = []
+    for p in chunks:
+        if p.suffix.lower() == ".parquet":
+            frames.append(read_parquet(str(p)))
         else:
-            import pandas as pd  # type: ignore
+            frames.append(read_csv(str(p)))
+    return frames
 
-            combined = Frame(pd.concat([f.to_backend() for f in frames]))
-        t1 = time.perf_counter()
 
-        used = _used_cores_for_backend(backend)
-        ver = get_backend_version(backend)
+def concat_frames(frames: List[Frame], backend: str) -> Frame:
+    """Concatenate a list of Frames using backend-native concat semantics."""
+    if backend == "pyspark":
+        import pyspark.pandas as ps  # type: ignore
+        return Frame(ps.concat([f.to_backend() for f in frames]))
+    if backend == "dask":
+        import dask.dataframe as dd  # type: ignore
+        return Frame(dd.concat([f.to_backend() for f in frames]))
+    import pandas as pd  # type: ignore
+    return Frame(pd.concat([f.to_backend() for f in frames]))
 
-        # Run op
-        t2 = time.perf_counter()
-        if args.operation == "filter":
-            out = combined.query("x > 0 and y < 0")
-        else:
-            out = combined.groupby("cat").agg({"x": "sum", "y": "mean"})
-        pdf = out.head(10_000_000).to_pandas()
-        rows = len(pdf.index) if hasattr(pdf, "index") else None
-        t3 = time.perf_counter()
 
-        results.append(
-            Result(
-                backend=backend,
-                op=args.operation,
-                read_s=t1 - t0,
-                compute_s=t3 - t2,
-                rows=rows,
-                used_cores=used,
-                version=ver,
-            )
-        )
+def measure_read(chunks: List[Path], backend: str) -> tuple[Frame, float, int]:
+    """Measure time to read and concatenate all chunks for a backend.
 
+    Returns the combined Frame, elapsed seconds, and total input bytes.
+    """
+    t0 = time.perf_counter()
+    frames = read_frames_for_backend(chunks, backend)
+    combined = concat_frames(frames, backend)
+    t1 = time.perf_counter()
+    total_bytes = sum((p.stat().st_size for p in chunks if p.exists()), 0)
+    return combined, t1 - t0, total_bytes
+
+
+def run_operation(combined: Frame, op: str) -> tuple[int, float]:
+    """Execute the chosen operation and materialize a small ``head``.
+
+    Returns the observed row count in pandas and the compute duration.
+    """
+    t2 = time.perf_counter()
+    out = combined.query("x > 0 and y < 0") if op == "filter" else combined.groupby("cat").agg({"x": "sum", "y": "mean"})
+    pdf = out.head(10_000_000).to_pandas()
+    rows = len(pdf.index) if hasattr(pdf, "index") else 0
+    t3 = time.perf_counter()
+    return rows, t3 - t2
+
+
+def run_backend(backend: str, chunks: List[Path], op: str) -> Result:
+    """Run the full read+compute pipeline for a single backend and return timings."""
+    configure_backend(backend)
+    combined, read_s, _ = measure_read(chunks, backend)
+    used = _used_cores_for_backend(backend)
+    ver = get_backend_version(backend)
+    rows, compute_s = run_operation(combined, op)
+    return Result(backend=backend, op=op, read_s=read_s, compute_s=compute_s, rows=rows, used_cores=used, version=ver)
+
+
+def choose_backends(only_backend: Optional[str]) -> List[str]:
+    """Return the list of backends to run, honoring ``--only-backend`` if set."""
+    if only_backend:
+        return [only_backend]
+    return Backends
+
+
+def build_rows(results: List[Result]) -> List[List[str]]:
+    """Format results into string rows for fixed-width table rendering."""
+    rows: List[List[str]] = []
+    for r in results:
+        rows.append([r.backend, str(r.version), r.op, f"{r.read_s:.4f}", f"{r.compute_s:.4f}", str(r.rows), str(r.used_cores)])
+    return rows
+
+
+def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str]) -> None:
+    """Write a fixed-width Markdown report including header context and timings."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    headers = [
-        "backend",
-        "version",
-        "op",
-        "read_s",
-        "compute_s",
-        "rows",
-        "used_cores",
-    ]
-    rows_out: List[List[str]] = [
-        [
-            r.backend,
-            str(r.version),
-            r.op,
-            f"{r.read_s:.4f}",
-            f"{r.compute_s:.4f}",
-            str(r.rows),
-            str(r.used_cores),
-        ]
-        for r in results
-    ]
+    headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
     lines = [
         "# Billion Row Challenge (scaffold)",
         "",
@@ -235,13 +275,24 @@ def main():
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
         "",
         "```text",
-        *format_fixed(headers, rows_out),
+        *format_fixed(headers, build_rows(results)),
         "```",
         "",
     ]
-    out_path = Path(args.md_out) if args.md_out else OUT
+    out_path = Path(md_out) if md_out else OUT
     out_path.write_text("\n".join(lines))
     print("Wrote", out_path)
+
+def main():
+    args = parse_arguments()
+    chunks = resolve_chunks(args)
+    results: List[Result] = []
+    backends_to_run = [args.only_backend] if args.only_backend else Backends
+    for backend in backends_to_run:
+        if not check_available(backend):
+            continue
+        results.append(run_backend(backend, chunks, args.operation))
+    write_report(chunks, results, args.md_out)
 
 
 if __name__ == "__main__":
