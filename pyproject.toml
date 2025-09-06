@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unipandas"
+version = "0.1.0"
+description = "Unified pandas-like API with pluggable backends: pandas, Dask, pandas-on-Spark"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "Your Name", email = "you@example.com" },
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.optional-dependencies]
+pandas = ["pandas>=1.5"]
+dask = ["dask[dataframe]>=2024.1.0"]
+pyspark = ["pyspark>=3.2"]
+
+[project.urls]
+homepage = "https://example.com/unipandas"
+repository = "https://example.com/unipandas.git"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
