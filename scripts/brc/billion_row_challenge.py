@@ -55,10 +55,10 @@ except Exception:
         Backends as ALL_BACKENDS,
     )
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
-REPORTS = ROOT / "reports"
-REPORTS.mkdir(exist_ok=True)
+REPORTS = ROOT / "reports" / "brc"
+REPORTS.mkdir(parents=True, exist_ok=True)
 OUT = REPORTS / "billion_row_challenge.md"
 
 Backends = ALL_BACKENDS

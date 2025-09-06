@@ -40,10 +40,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-ROOT = Path(__file__).resolve().parents[1]
-REPORTS = ROOT / "reports"
+ROOT = Path(__file__).resolve().parents[2]
+REPORTS = ROOT / "reports" / "brc"
 # Ensure the reports directory exists so downstream writes do not fail
-REPORTS.mkdir(exist_ok=True)
+REPORTS.mkdir(parents=True, exist_ok=True)
 OUT = REPORTS / "billion_row_om.md"
 
 PY = sys.executable or "python3"  # Use current interpreter; fallback to python3

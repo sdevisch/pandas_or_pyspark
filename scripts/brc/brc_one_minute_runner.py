@@ -9,27 +9,20 @@ import sys
 from datetime import datetime
 import glob
 from pathlib import Path
-from typing import Dict, List
+from typing import List
+import time
 
-ROOT = Path(__file__).resolve().parents[1]
-REPORTS = ROOT / "reports"
-REPORTS.mkdir(exist_ok=True)
+ROOT = Path(__file__).resolve().parents[2]
+REPORTS = ROOT / "reports" / "brc"
+REPORTS.mkdir(parents=True, exist_ok=True)
 OUT = REPORTS / "brc_one_minute.md"
 
 PY = sys.executable or "python3"
-SCRIPT = ROOT / "scripts" / "billion_row_challenge.py"
+SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 
-Backends = ["pandas", "dask", "pyspark"]
+Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
 
-SCALES = [
-    1_000,
-    10_000,
-    100_000,
-    1_000_000,
-    10_000_000,
-    100_000_000,
-    1_000_000_000,
-]
+SCALES = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 
 
 def fmt_fixed(headers: List[str], rows: List[List[str]]) -> List[str]:
@@ -54,17 +47,20 @@ def sci(n: int) -> str:
     return f"{n:.1e}"
 
 
-def can_process_within(backend: str, rows: int, budget_s: float, operation: str, data_glob: str | None) -> bool:
+def can_process_within(backend: str, rows: int, budget_s: float, operation: str, data_glob: str | None) -> tuple[bool, float]:
     env = os.environ.copy()
     env["UNIPANDAS_BACKEND"] = backend
     cmd = [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", operation]
     if data_glob:
         cmd = [PY, str(SCRIPT), "--data-glob", data_glob, "--operation", operation]
+    start = time.perf_counter()
     try:
         subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=budget_s)
-        return True
+        elapsed = time.perf_counter() - start
+        return True, elapsed
     except Exception:
-        return False
+        elapsed = time.perf_counter() - start
+        return False, elapsed
 
 
 def main():
@@ -79,11 +75,12 @@ def main():
     )
     args = parser.parse_args()
 
-    headers = ["backend", "max_rows_within_1min"]
+    headers = ["backend", "max_rows_within_1min", "elapsed_s_at_max"]
     rows_out: List[List[str]] = []
 
     for backend in Backends:
         max_rows = 0
+        elapsed_at_max = 0.0
         for size in SCALES:
             glob_arg = args.data_glob
             if args.data_glob_template:
@@ -91,12 +88,13 @@ def main():
                 # If no files exist for this size, skip without breaking
                 if not glob.glob(glob_arg):
                     continue
-            ok = can_process_within(backend, size, args.budget, args.operation, glob_arg)
+            ok, elapsed = can_process_within(backend, size, args.budget, args.operation, glob_arg)
             if ok:
                 max_rows = size
+                elapsed_at_max = elapsed
             else:
                 break
-        rows_out.append([backend, sci(max_rows)])
+        rows_out.append([backend, sci(max_rows), f"{elapsed_at_max:.3f}"])
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     content = ["# 1-minute BRC runner", "", f"Generated at: {ts}", "", "```text", *fmt_fixed(headers, rows_out), "```", ""]
