@@ -1,0 +1,7 @@
+# Pinned deps for Python 3.9 compatible cross-backend env
+numpy==1.26.4
+pandas==2.2.2
+pyarrow==14.0.2
+dask[dataframe]==2024.5.1
+pyspark==3.5.1
+
