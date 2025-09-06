@@ -17,9 +17,9 @@ REPORTS.mkdir(exist_ok=True)
 OUT = REPORTS / "brc_scale.md"
 
 PY = sys.executable or "python3"
-SCRIPT = ROOT / "scripts" / "billion_row_challenge.py"
+SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 
-Backends = ["pandas", "dask", "pyspark"]
+Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
 SCALES = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 
 

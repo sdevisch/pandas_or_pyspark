@@ -7,6 +7,8 @@ from .backend import (
     import_dask_dataframe,
     import_pandas,
     import_pyspark_pandas,
+    import_polars,
+    import_duckdb,
 )
 from .frame import Frame
 
@@ -22,6 +24,20 @@ def read_csv(path: str, **kwargs: Any) -> Frame:
     if backend == "pyspark":
         ps = import_pyspark_pandas()
         return Frame(ps.read_csv(path, **kwargs))
+    if backend == "polars":
+        # Use polars for IO, but convert to pandas for unified pandas interface
+        pl = import_polars()
+        pd = import_pandas()
+        return Frame(pl.read_csv(path, **kwargs).to_pandas())
+    if backend == "duckdb":
+        duck = import_duckdb()
+        # duckdb returns a relation; materialize to pandas for uniform ops
+        con = duck.connect()
+        try:
+            rel = con.read_csv(path, **kwargs)
+            return Frame(rel.to_df())
+        finally:
+            con.close()
     raise RuntimeError(f"Unknown backend {backend}")
 
 
@@ -36,6 +52,18 @@ def read_parquet(path: str, **kwargs: Any) -> Frame:
     if backend == "pyspark":
         ps = import_pyspark_pandas()
         return Frame(ps.read_parquet(path, **kwargs))
+    if backend == "polars":
+        pl = import_polars()
+        pd = import_pandas()
+        return Frame(pl.read_parquet(path, **kwargs).to_pandas())
+    if backend == "duckdb":
+        duck = import_duckdb()
+        con = duck.connect()
+        try:
+            rel = con.read_parquet(path)
+            return Frame(rel.to_df())
+        finally:
+            con.close()
     raise RuntimeError(f"Unknown backend {backend}")
 
 

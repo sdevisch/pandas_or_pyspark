@@ -40,11 +40,12 @@ class Frame:
             cols = [columns]
         else:
             cols = list(columns)
+        # Polars supports df[cols] for column projection as well
         result = self._obj[cols]
         return Frame(result)
 
     def query(self, expr: str) -> "Frame":
-        # All three backends expose .query; dask requires meta sometimes but for simple use it works.
+        # All backends expose pandas-like .query in this unified API
         result = self._obj.query(expr)
         return Frame(result)
 
@@ -86,6 +87,9 @@ class Frame:
             return self._obj.compute()
         if self._backend == "pyspark":
             # pandas-on-Spark exposes to_pandas
+            return self._obj.to_pandas()
+        if self._backend == "polars":
+            # Polars exposes to_pandas
             return self._obj.to_pandas()
         raise RuntimeError(f"Unknown backend {self._backend}")
 
