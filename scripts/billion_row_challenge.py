@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+"""
+Billion Row Challenge (BRC) scaffold
+------------------------------------
+
+Generates chunked CSV data and runs a simple operation (filter or groupby)
+across whichever backend is selected via `UNIPANDAS_BACKEND` (pandas, dask,
+or pandas-on-Spark). Results are written as a fixed-width Markdown table
+under `reports/billion_row_challenge.md`.
+
+Design notes
+------------
+- Data generation is chunked to allow scaling up without holding everything in
+  memory; each chunk is an independent CSV file.
+- Concatenation uses backend-native concat where applicable to avoid eager
+  collection into local memory.
+- We materialize a `head` to pandas to ensure compute happens for lazy engines.
+  For huge outputs, `head` limits transfer size to the driver.
+"""
 
 from __future__ import annotations
 
