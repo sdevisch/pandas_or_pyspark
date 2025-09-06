@@ -48,7 +48,6 @@ def op_groupby_agg(df: Frame) -> Frame:
 
 
 def op_merge(df: Frame) -> Frame:
-    # self-merge on cat just to validate API
     return df.merge(df, on="cat")
 
 
@@ -80,7 +79,6 @@ def try_ops_for_backend(backend: str, path: Path) -> Dict[str, str]:
     for name, fn in OPS:
         try:
             out = fn(df)
-            # trigger compute via to_pandas on head
             _ = out.head(10).to_pandas()
             results[name] = "ok"
         except Exception as e:
@@ -88,14 +86,28 @@ def try_ops_for_backend(backend: str, path: Path) -> Dict[str, str]:
     return results
 
 
+def format_fixed_width(headers: List[str], rows: List[List[str]]) -> str:
+    widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
+
+    def fmt(vals: List[str]) -> str:
+        parts: List[str] = []
+        for i, v in enumerate(vals):
+            align_left = i == 0
+            parts.append(v.ljust(widths[i]) if align_left else v.rjust(widths[i]))
+        return "  " + "  ".join(parts)
+
+    lines: List[str] = [fmt(headers), "  " + "  ".join(["-" * w for w in widths])]
+    for row in rows:
+        lines.append(fmt(row))
+    return "\n".join(lines)
+
+
 def main():
     path = make_dataset()
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    rows: List[str] = []
-    header = ["operation"] + Backends
-    rows.append("| " + " | ".join(header) + " |")
-    rows.append("|" + "|".join(["---"] * len(header)) + "|")
+    hdr = ["operation"] + Backends
+    rows: List[List[str]] = []
 
     backend_to_results: Dict[str, Dict[str, str]] = {}
     for backend in Backends:
@@ -105,9 +117,10 @@ def main():
         row = [op_name]
         for backend in Backends:
             row.append(backend_to_results[backend].get(op_name, "-"))
-        rows.append("| " + " | ".join(row) + " |")
+        rows.append(row)
 
-    OUT.write_text("# Compatibility matrix\n\n" + f"Generated at: {ts}\n\n" + "\n".join(rows) + "\n")
+    content = ["# Compatibility matrix", "", f"Generated at: {ts}", "", "```text", format_fixed_width(hdr, rows), "```", ""]
+    OUT.write_text("\n".join(content))
     print("Wrote", OUT)
 
 
