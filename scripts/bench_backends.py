@@ -14,8 +14,16 @@ Backends = ["pandas", "dask", "pyspark"]
 
 def try_configure(backend: str) -> bool:
     try:
+        if backend == "pandas":
+            __import__("pandas")
+        elif backend == "dask":
+            __import__("dask.dataframe")
+        elif backend == "pyspark":
+            __import__("pyspark.pandas")
+        else:
+            print(f"[skip] backend={backend}: unknown backend")
+            return False
         configure_backend(backend)
-        # force a trivial import via read_csv signature resolution
         return True
     except Exception as e:
         print(f"[skip] backend={backend}: {e}")
