@@ -35,7 +35,7 @@ def get_backend_version(backend: str) -> Optional[str]:
     return None
 
 
-def try_configure(backend: str) -> bool:
+def check_available(backend: str) -> bool:
     try:
         if backend == "pandas":
             __import__("pandas")
@@ -44,7 +44,16 @@ def try_configure(backend: str) -> bool:
         elif backend == "pyspark":
             __import__("pyspark.pandas")
         else:
-            print(f"[skip] backend={backend}: unknown backend")
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def try_configure(backend: str) -> bool:
+    try:
+        if not check_available(backend):
+            print(f"[skip] backend={backend}: required modules not available")
             return False
         configure_backend(backend)
         return True
@@ -61,6 +70,28 @@ class Result:
     rows: Optional[int]
     used_cores: Optional[int]
     version: Optional[str]
+
+
+def _format_fixed_width_table(
+    headers: List[str], rows: List[List[str]], right_align_from: int = 2
+) -> List[str]:
+    widths = [
+        max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))
+    ]
+
+    def fmt_row(vals: List[str]) -> str:
+        parts: List[str] = []
+        for i, v in enumerate(vals):
+            if i < right_align_from:
+                parts.append(v.ljust(widths[i]))
+            else:
+                parts.append(v.rjust(widths[i]))
+        return "  ".join(parts)
+
+    lines: List[str] = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
+    for row in rows:
+        lines.append(fmt_row(row))
+    return lines
 
 
 def _used_cores_for_backend(backend: str) -> Optional[int]:
@@ -160,12 +191,11 @@ def main():
 
     print("Backends to try:", Backends)
     print("Availability:")
+    availability = []
     for name in Backends:
         ver = get_backend_version(name)
-        try:
-            ok = try_configure(name)
-        except Exception:
-            ok = False
+        ok = check_available(name)
+        availability.append({"backend": name, "version": ver, "available": ok})
         status = "available" if ok else "unavailable"
         print(f"- {name}: {status} (version={ver})")
 
@@ -182,16 +212,35 @@ def main():
     print(f"- System available cores: {os.cpu_count()}")
 
     print("\nResults (seconds):")
-    print("backend\tversion\tload_s\tcompute_s\trows\tused_cores")
-    for r in results:
-        print(
-            f"{r.backend}\t{r.version}\t{r.load_s:.4f}\t{r.compute_s:.4f}\t{r.rows}\t{r.used_cores}"
-        )
+    headers = ["backend", "version", "load_s", "compute_s", "rows", "used_cores"]
+    result_by_backend = {r.backend: r for r in results}
+    rows_console: List[List[str]] = []
+    for name in Backends:
+        r = result_by_backend.get(name)
+        if r is not None:
+            rows_console.append(
+                [
+                    r.backend,
+                    str(r.version),
+                    f"{r.load_s:.4f}",
+                    f"{r.compute_s:.4f}",
+                    str(r.rows),
+                    str(r.used_cores),
+                ]
+            )
+        else:
+            ver = next((a["version"] for a in availability if a["backend"] == name), None)
+            rows_console.append([name, str(ver), "-", "-", "-", "-"])
+
+    for line in _format_fixed_width_table(headers, rows_console):
+        print(line)
 
     if args.md_out:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         md_lines: List[str] = []
         md_lines.append(f"# unipandas benchmark")
+        md_lines.append("")
+        md_lines.append("## Run context")
         md_lines.append("")
         md_lines.append(f"- Data file: `{args.path}`")
         md_lines.append(f"- Ran at: {ts}")
@@ -203,12 +252,39 @@ def main():
             f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}"
         )
         md_lines.append("")
-        md_lines.append("| backend | version | load_s | compute_s | rows | used_cores |")
-        md_lines.append("|---|---|---:|---:|---:|---:|")
-        for r in results:
+        md_lines.append("## Backend availability")
+        md_lines.append("")
+        md_lines.append("| backend | version | status |")
+        md_lines.append("|---|---|---|")
+        for item in availability:
             md_lines.append(
-                f"| {r.backend} | {r.version} | {r.load_s:.4f} | {r.compute_s:.4f} | {r.rows} | {r.used_cores} |"
+                f"| {item['backend']} | {item['version']} | {'available' if item['available'] else 'unavailable'} |"
             )
+        md_lines.append("")
+        md_lines.append("## Results (seconds)")
+        md_lines.append("")
+        # Use only fixed-width table for alignment
+        md_lines.append("```text")
+        headers = ["backend", "version", "load_s", "compute_s", "rows", "used_cores"]
+        result_by_backend = {r.backend: r for r in results}
+        rows_console: List[List[str]] = []
+        for name in Backends:
+            r = result_by_backend.get(name)
+            if r is not None:
+                rows_console.append([
+                    r.backend,
+                    str(r.version),
+                    f"{r.load_s:.4f}",
+                    f"{r.compute_s:.4f}",
+                    str(r.rows),
+                    str(r.used_cores),
+                ])
+            else:
+                ver = next((a["version"] for a in availability if a["backend"] == name), None)
+                rows_console.append([name, str(ver), "-", "-", "-", "-"])
+        for line in _format_fixed_width_table(headers, rows_console):
+            md_lines.append(line)
+        md_lines.append("```")
         md_content = "\n".join(md_lines) + "\n"
         with open(args.md_out, "w") as f:
             f.write(md_content)
