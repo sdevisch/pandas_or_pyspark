@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+
 import argparse
 import os
 import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from datetime import datetime
+import platform
 
 from unipandas import configure_backend, read_csv
 
@@ -82,6 +85,7 @@ def main():
     parser.add_argument("--query", default=None, help="Optional pandas query string, e.g. 'a > 0' ")
     parser.add_argument("--assign", action="store_true", help="Add column c = a + b before compute")
     parser.add_argument("--groupby", default=None, help="Optional groupby column name to count")
+    parser.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
     args = parser.parse_args()
 
     print("Backends to try:", Backends)
@@ -95,6 +99,25 @@ def main():
     print("backend\tload_s\tcompute_s\trows")
     for r in results:
         print(f"{r.backend}\t{r.load_s:.4f}\t{r.compute_s:.4f}\t{r.rows}")
+
+    if args.md_out:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        md_lines: List[str] = []
+        md_lines.append(f"# unipandas benchmark")
+        md_lines.append("")
+        md_lines.append(f"- Path: `{args.path}`")
+        md_lines.append(f"- Ran at: {ts}")
+        md_lines.append(f"- Python: `{platform.python_version()}` on `{platform.platform()}`")
+        md_lines.append(f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}")
+        md_lines.append("")
+        md_lines.append("| backend | load_s | compute_s | rows |")
+        md_lines.append("|---|---:|---:|---:|")
+        for r in results:
+            md_lines.append(f"| {r.backend} | {r.load_s:.4f} | {r.compute_s:.4f} | {r.rows} |")
+        md_content = "\n".join(md_lines) + "\n"
+        with open(args.md_out, "w") as f:
+            f.write(md_content)
+        print(f"\nWrote Markdown results to {args.md_out}")
     return 0
 
 
