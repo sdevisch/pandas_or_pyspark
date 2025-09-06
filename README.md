@@ -61,6 +61,14 @@ Notes
 - Dask operations are lazy; call `to_pandas()` to compute.
 - pandas-on-Spark mirrors pandas closely; `to_pandas()` brings data locally.
 
+Benchmarking
+------------
+Run the same workload across available backends and compare timings:
+
+```bash
+python scripts/bench_backends.py path/to/data.csv --assign --query "a > 0" --groupby a
+```
+
 License
 -------
 MIT
