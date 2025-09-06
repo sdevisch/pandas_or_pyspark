@@ -26,21 +26,30 @@ SCALES = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_
 
 
 def fmt_fixed(headers: List[str], rows: List[List[str]]) -> List[str]:
-    widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
+    try:
+        # Try importing shared formatter from scripts.utils
+        import sys as _sys
+        _here = Path(__file__).resolve()
+        _sys.path.append(str(_here.parents[1]))  # scripts
+        from utils import format_fixed as utils_format_fixed  # type: ignore
 
-    def fmt_row(vals: List[str]) -> str:
-        parts: List[str] = []
-        for i, v in enumerate(vals):
-            if i < 1:
-                parts.append(v.ljust(widths[i]))
-            else:
-                parts.append(v.rjust(widths[i]))
-        return "  ".join(parts)
+        return utils_format_fixed(headers, rows, right_align_from=1)
+    except Exception:
+        widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
 
-    lines = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
-    for r in rows:
-        lines.append(fmt_row(r))
-    return lines
+        def fmt_row(vals: List[str]) -> str:
+            parts: List[str] = []
+            for i, v in enumerate(vals):
+                if i < 1:
+                    parts.append(v.ljust(widths[i]))
+                else:
+                    parts.append(v.rjust(widths[i]))
+            return "  ".join(parts)
+
+        lines = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
+        for r in rows:
+            lines.append(fmt_row(r))
+        return lines
 
 
 def sci(n: int) -> str:

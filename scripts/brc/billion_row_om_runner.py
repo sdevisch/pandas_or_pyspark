@@ -137,29 +137,31 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
 
 
 def fmt_fixed(headers: List[str], rows: List[List[str]]) -> List[str]:
-    """Render a fixed-width text table for reliable alignment in Markdown.
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
 
-    We left-align the first two columns (categorical-ish) and right-align the
-    numeric columns. Widths are computed from the maximum of header and data.
-    """
+        _here = _Path(__file__).resolve()
+        _sys.path.append(str(_here.parents[1]))  # scripts
+        from utils import format_fixed as utils_format_fixed  # type: ignore
 
-    # Compute per-column widths to format a neat fixed-width table
-    widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
+        return utils_format_fixed(headers, rows, right_align_from=2)
+    except Exception:
+        widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
 
-    def fmt_row(vals: List[str]) -> str:
-        parts: List[str] = []
-        for i, v in enumerate(vals):
-            if i < 2:
-                parts.append(v.ljust(widths[i]))
-            else:
-                parts.append(v.rjust(widths[i]))
-        return "  ".join(parts)
+        def fmt_row(vals: List[str]) -> str:
+            parts: List[str] = []
+            for i, v in enumerate(vals):
+                if i < 2:
+                    parts.append(v.ljust(widths[i]))
+                else:
+                    parts.append(v.rjust(widths[i]))
+            return "  ".join(parts)
 
-    # Header, ruler, then each row
-    lines = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
-    for r in rows:
-        lines.append(fmt_row(r))
-    return lines
+        lines = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
+        for r in rows:
+            lines.append(fmt_row(r))
+        return lines
 
 
 def main():

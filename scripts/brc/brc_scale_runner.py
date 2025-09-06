@@ -24,21 +24,31 @@ SCALES = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 
 
 def fmt_fixed(headers: List[str], rows: List[List[str]]) -> List[str]:
-    widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
 
-    def fmt_row(vals: List[str]) -> str:
-        parts: List[str] = []
-        for i, v in enumerate(vals):
-            if i < 2:
-                parts.append(v.ljust(widths[i]))
-            else:
-                parts.append(v.rjust(widths[i]))
-        return "  ".join(parts)
+        _here = _Path(__file__).resolve()
+        _sys.path.append(str(_here.parents[1]))  # scripts
+        from utils import format_fixed as utils_format_fixed  # type: ignore
 
-    lines = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
-    for r in rows:
-        lines.append(fmt_row(r))
-    return lines
+        return utils_format_fixed(headers, rows, right_align_from=2)
+    except Exception:
+        widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
+
+        def fmt_row(vals: List[str]) -> str:
+            parts: List[str] = []
+            for i, v in enumerate(vals):
+                if i < 2:
+                    parts.append(v.ljust(widths[i]))
+                else:
+                    parts.append(v.rjust(widths[i]))
+            return "  ".join(parts)
+
+        lines = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
+        for r in rows:
+            lines.append(fmt_row(r))
+        return lines
 
 
 def run_step(backend: str, rows: int, budget_s: float, op: str) -> bool:
