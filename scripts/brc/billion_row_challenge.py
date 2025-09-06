@@ -1,4 +1,4 @@
-#!/usr/bin/env python=
+#!/usr/bin/env python3
 """Billion Row Challenge (BRC) scaffold.
 
 This script provides a safe, repeatable harness for running a small set of
@@ -21,6 +21,41 @@ Outputs:
 - A Markdown file `reports/brc/billion_row_challenge.md` by default, or a path
   provided via `--md-out`. The header includes the number of chunks and total
   bytes, to support plausibility/throughput analysis.
+
+Usage
+-----
+Basic run (generate small CSV chunks and filter):
+    python scripts/brc/billion_row_challenge.py --rows-per-chunk 100000 --num-chunks 2 --operation filter
+
+Run on existing Parquet chunks:
+    python scripts/brc/billion_row_challenge.py --data-glob "data/brc_100000/*.parquet" --operation groupby
+
+Run a single backend explicitly:
+    UNIPANDAS_BACKEND=pyspark python scripts/brc/billion_row_challenge.py --only-backend pyspark
+
+Force full compute (instead of head) and write report to custom path:
+    python scripts/brc/billion_row_challenge.py --materialize count --md-out reports/brc/custom.md
+
+CLI Flags
+---------
+- --rows-per-chunk: Integer row count per generated CSV chunk (default 1_000_000)
+- --num-chunks: Number of chunks to generate (default 1)
+- --operation: "filter" or "groupby" (default "filter")
+- --materialize: "head" (default), "count" (full compute w/o full transfer), or "all"
+- --data-glob: Glob pattern for existing inputs (Parquet or CSV)
+- --only-backend: Restrict run to a single backend
+- --md-out: Output markdown path
+
+Environment
+-----------
+- UNIPANDAS_BACKEND: Preferred backend (pandas, dask, pyspark, polars, duckdb)
+- BRC_MATERIALIZE: Materialization override (head|count|all). Set automatically by --materialize.
+
+Notes
+-----
+- CSV generation uses size-specific directories to avoid reusing small files for larger sizes.
+- For lazy engines (Dask, pandas-on-Spark), "count" is recommended to force full compute without
+  a full to_pandas transfer.
 """
 
 from __future__ import annotations
