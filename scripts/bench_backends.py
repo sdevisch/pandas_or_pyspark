@@ -1,27 +1,52 @@
 #!/usr/bin/env python3
+
+
 import argparse
 import os
 import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from datetime import datetime
+import platform
 
 from unipandas import configure_backend, read_csv
+# Support running as a script or as a module
+try:  # when invoked as a module: python -m scripts.bench_backends
+    from .utils import (
+        Backends as ALL_BACKENDS,
+        get_backend_version as utils_get_backend_version,
+        check_available as utils_check_available,
+        format_fixed as utils_format_fixed,
+    )
+except Exception:  # when invoked as a script: python scripts/bench_backends.py
+    import sys
+    from pathlib import Path
+
+    sys.path.append(str(Path(__file__).resolve().parents[0]))
+    from utils import (  # type: ignore
+        Backends as ALL_BACKENDS,
+        get_backend_version as utils_get_backend_version,
+        check_available as utils_check_available,
+        format_fixed as utils_format_fixed,
+    )
 
 
-Backends = ["pandas", "dask", "pyspark"]
+Backends = ALL_BACKENDS
+
+
+def get_backend_version(backend: str) -> Optional[str]:
+    return utils_get_backend_version(backend)
+
+
+def check_available(backend: str) -> bool:
+    return utils_check_available(backend)
 
 
 def try_configure(backend: str) -> bool:
     try:
-        if backend == "pandas":
-            __import__("pandas")
-        elif backend == "dask":
-            __import__("dask.dataframe")
-        elif backend == "pyspark":
-            __import__("pyspark.pandas")
-        else:
-            print(f"[skip] backend={backend}: unknown backend")
+        if not check_available(backend):
+            print(f"[skip] backend={backend}: required modules not available")
             return False
         configure_backend(backend)
         return True
@@ -36,6 +61,64 @@ class Result:
     load_s: float
     compute_s: float
     rows: Optional[int]
+    used_cores: Optional[int]
+    version: Optional[str]
+
+
+def _format_fixed_width_table(
+    headers: List[str], rows: List[List[str]], right_align_from: int = 2
+) -> List[str]:
+    widths = [
+        max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))
+    ]
+
+    def fmt_row(vals: List[str]) -> str:
+        parts: List[str] = []
+        for i, v in enumerate(vals):
+            if i < right_align_from:
+                parts.append(v.ljust(widths[i]))
+            else:
+                parts.append(v.rjust(widths[i]))
+        return "  ".join(parts)
+
+    lines: List[str] = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
+    for row in rows:
+        lines.append(fmt_row(row))
+    return lines
+
+
+def _used_cores_for_backend(backend: str) -> Optional[int]:
+    try:
+        if backend == "pandas":
+            return 1
+        if backend == "dask":
+            try:
+                from distributed import get_client  # type: ignore
+
+                try:
+                    client = get_client()
+                    nthreads = getattr(client, "nthreads", None)
+                    if isinstance(nthreads, dict):
+                        return sum(int(v) for v in nthreads.values())
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return os.cpu_count() or None
+        if backend == "pyspark":
+            try:
+                from pyspark.sql import SparkSession  # type: ignore
+
+                active = SparkSession.getActiveSession()
+                if active is not None:
+                    sc = active.sparkContext
+                    return int(getattr(sc, "defaultParallelism", None) or 0) or None
+            except Exception:
+                pass
+            return None
+    except Exception:
+        return None
+    return None
 
 
 def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[str]) -> List[Result]:
@@ -50,7 +133,6 @@ def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[s
 
         out = df
         if assign:
-            # assume columns a and b exist, or skip safely
             try:
                 out = out.assign(c=lambda x: x["a"] + x["b"])  # type: ignore
             except Exception as e:
@@ -66,13 +148,27 @@ def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[s
             except Exception as e:
                 print(f"[warn] groupby skipped for backend={backend}: {e}")
 
-        # force compute and measure
         t2 = time.perf_counter()
-        pdf = out.head(1000000000).to_pandas()  # head with large n to trigger compute across backends
+        pdf = out.head(1000000000).to_pandas()
         rows = len(pdf.index) if hasattr(pdf, "index") else None
         t3 = time.perf_counter()
 
-        results.append(Result(backend, load_s=t1 - t0, compute_s=t3 - t2, rows=rows))
+        used = _used_cores_for_backend(backend)
+        ver = get_backend_version(backend)
+        print(
+            f"[info] backend={backend} version={ver} used_cores={used} available_cores={os.cpu_count()}"
+        )
+
+        results.append(
+            Result(
+                backend=backend,
+                load_s=t1 - t0,
+                compute_s=t3 - t2,
+                rows=rows,
+                used_cores=used,
+                version=ver,
+            )
+        )
     return results
 
 
@@ -82,19 +178,110 @@ def main():
     parser.add_argument("--query", default=None, help="Optional pandas query string, e.g. 'a > 0' ")
     parser.add_argument("--assign", action="store_true", help="Add column c = a + b before compute")
     parser.add_argument("--groupby", default=None, help="Optional groupby column name to count")
+    parser.add_argument("--code-file", default=None, help="Optional path to the pandas code file processed")
+    parser.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
     args = parser.parse_args()
 
     print("Backends to try:", Backends)
+    print("Availability:")
+    availability = []
+    for name in Backends:
+        ver = get_backend_version(name)
+        ok = check_available(name)
+        availability.append({"backend": name, "version": ver, "available": ok})
+        status = "available" if ok else "unavailable"
+        print(f"- {name}: {status} (version={ver})")
+
     results = benchmark(args.path, query=args.query, assign=args.assign, groupby=args.groupby)
 
     if not results:
         print("No backends available.")
         return 1
 
+    print("\nRun context:")
+    print(f"- Data file: {args.path}")
+    if args.code_file:
+        print(f"- Code file: {args.code_file}")
+    print(f"- System available cores: {os.cpu_count()}")
+
     print("\nResults (seconds):")
-    print("backend\tload_s\tcompute_s\trows")
-    for r in results:
-        print(f"{r.backend}\t{r.load_s:.4f}\t{r.compute_s:.4f}\t{r.rows}")
+    headers = ["backend", "version", "load_s", "compute_s", "rows", "used_cores"]
+    result_by_backend = {r.backend: r for r in results}
+    rows_console: List[List[str]] = []
+    for name in Backends:
+        r = result_by_backend.get(name)
+        if r is not None:
+            rows_console.append(
+                [
+                    r.backend,
+                    str(r.version),
+                    f"{r.load_s:.4f}",
+                    f"{r.compute_s:.4f}",
+                    str(r.rows),
+                    str(r.used_cores),
+                ]
+            )
+        else:
+            ver = next((a["version"] for a in availability if a["backend"] == name), None)
+            rows_console.append([name, str(ver), "-", "-", "-", "-"])
+
+    for line in _format_fixed_width_table(headers, rows_console):
+        print(line)
+
+    if args.md_out:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        md_lines: List[str] = []
+        md_lines.append(f"# unipandas benchmark")
+        md_lines.append("")
+        md_lines.append("## Run context")
+        md_lines.append("")
+        md_lines.append(f"- Data file: `{args.path}`")
+        md_lines.append(f"- Ran at: {ts}")
+        md_lines.append(f"- Python: `{platform.python_version()}` on `{platform.platform()}`")
+        if args.code_file:
+            md_lines.append(f"- Code file: `{args.code_file}`")
+        md_lines.append(f"- System available cores: {os.cpu_count()}")
+        md_lines.append(
+            f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}"
+        )
+        md_lines.append("")
+        md_lines.append("## Backend availability")
+        md_lines.append("")
+        md_lines.append("| backend | version | status |")
+        md_lines.append("|---|---|---|")
+        for item in availability:
+            md_lines.append(
+                f"| {item['backend']} | {item['version']} | {'available' if item['available'] else 'unavailable'} |"
+            )
+        md_lines.append("")
+        md_lines.append("## Results (seconds)")
+        md_lines.append("")
+        # Use only fixed-width table for alignment
+        md_lines.append("```text")
+        headers = ["backend", "version", "load_s", "compute_s", "rows", "used_cores"]
+        result_by_backend = {r.backend: r for r in results}
+        rows_console: List[List[str]] = []
+        for name in Backends:
+            r = result_by_backend.get(name)
+            if r is not None:
+                rows_console.append([
+                    r.backend,
+                    str(r.version),
+                    f"{r.load_s:.4f}",
+                    f"{r.compute_s:.4f}",
+                    str(r.rows),
+                    str(r.used_cores),
+                ])
+            else:
+                ver = next((a["version"] for a in availability if a["backend"] == name), None)
+                rows_console.append([name, str(ver), "-", "-", "-", "-"])
+        for line in _format_fixed_width_table(headers, rows_console):
+            md_lines.append(line)
+        md_lines.append("```")
+        md_content = "\n".join(md_lines) + "\n"
+        with open(args.md_out, "w") as f:
+            f.write(md_content)
+        print(f"\nWrote Markdown results to {args.md_out}")
     return 0
 
 
