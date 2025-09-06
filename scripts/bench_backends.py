@@ -11,43 +11,36 @@ from datetime import datetime
 import platform
 
 from unipandas import configure_backend, read_csv
+# Support running as a script or as a module
+try:  # when invoked as a module: python -m scripts.bench_backends
+    from .utils import (
+        Backends as ALL_BACKENDS,
+        get_backend_version as utils_get_backend_version,
+        check_available as utils_check_available,
+        format_fixed as utils_format_fixed,
+    )
+except Exception:  # when invoked as a script: python scripts/bench_backends.py
+    import sys
+    from pathlib import Path
+
+    sys.path.append(str(Path(__file__).resolve().parents[0]))
+    from utils import (  # type: ignore
+        Backends as ALL_BACKENDS,
+        get_backend_version as utils_get_backend_version,
+        check_available as utils_check_available,
+        format_fixed as utils_format_fixed,
+    )
 
 
-Backends = ["pandas", "dask", "pyspark"]
+Backends = ALL_BACKENDS
 
 
 def get_backend_version(backend: str) -> Optional[str]:
-    try:
-        if backend == "pandas":
-            import pandas as pd  # type: ignore
-
-            return getattr(pd, "__version__", None)
-        if backend == "dask":
-            import dask  # type: ignore
-
-            return getattr(dask, "__version__", None)
-        if backend == "pyspark":
-            import pyspark  # type: ignore
-
-            return getattr(pyspark, "__version__", None)
-    except Exception:
-        return None
-    return None
+    return utils_get_backend_version(backend)
 
 
 def check_available(backend: str) -> bool:
-    try:
-        if backend == "pandas":
-            __import__("pandas")
-        elif backend == "dask":
-            __import__("dask.dataframe")
-        elif backend == "pyspark":
-            __import__("pyspark.pandas")
-        else:
-            return False
-        return True
-    except Exception:
-        return False
+    return utils_check_available(backend)
 
 
 def try_configure(backend: str) -> bool:
