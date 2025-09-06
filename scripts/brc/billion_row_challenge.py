@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python=
 """Billion Row Challenge (BRC) scaffold.
 
 This script provides a safe, repeatable harness for running a small set of
@@ -329,11 +329,16 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     """Write a fixed-width Markdown report including header context and timings."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
+    # All results share the same op/materialize for a given run
+    op_val = results[0].op if results else "-"
+    mat_val = os.environ.get("BRC_MATERIALIZE", "head")
     lines = [
         "# Billion Row Challenge (scaffold)",
         "",
         f"Generated at: {ts}",
         "",
+        f"- operation: {op_val}",
+        f"- materialize: {mat_val}",
         f"- num_chunks: {len(chunks)}",
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
         "",
@@ -358,6 +363,7 @@ def main():
             continue
         results.append(run_backend(backend, chunks, args.operation))
     write_report(chunks, results, args.md_out)
+    print(f"Ran BRC with operation={args.operation} materialize={args.materialize}")
 
 
 if __name__ == "__main__":
