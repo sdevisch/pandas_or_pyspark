@@ -414,22 +414,13 @@ def format_measurements_to_rows(steps: List[StepResult]) -> List[List[str]]:
 
 
 def write_report_rows(rows: List[List[str]]) -> None:
-    """Write the OM report using the central report utility when available."""
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _here = _Path(__file__).resolve()
-        _sys.path.append(str(_here.parents[1]))  # scripts
-        from utils import write_brc_om_report as _write_om  # type: ignore
-        _write_om(OUT, rows)
-    except Exception:
-        # Fallback minimal TSV-like output
-        lines = ["# Billion Row OM Runner", "", "```text", "\t".join(_default_headers())]
-        for r in rows:
-            lines.append("\t".join(str(x) for x in r))
-        lines.extend(["```", ""])
-        OUT.write_text("\n".join(lines))
-        print("Wrote", OUT)
+    """Write the OM report using the central utilities."""
+    import sys as _sys
+    from pathlib import Path as _Path
+    _here = _Path(__file__).resolve()
+    _sys.path.append(str(_here.parents[1]))  # scripts
+    from utils import write_brc_om_report as _write_om  # type: ignore
+    _write_om(OUT, rows)
 
 
 def main():
