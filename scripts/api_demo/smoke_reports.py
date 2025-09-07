@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PY = sys.executable or "python3"
 
 
@@ -27,7 +27,7 @@ def main() -> int:
     (reports / "brc").mkdir(parents=True, exist_ok=True)
 
     # 1) Bench backends example
-    bench = ROOT / "scripts" / "bench_backends.py"
+    bench = ROOT / "scripts" / "api_demo" / "bench_backends.py"
     if bench.exists():
         data = ROOT / "data"
         data.mkdir(exist_ok=True)
@@ -55,12 +55,12 @@ def main() -> int:
         ])
 
     # 2) Compatibility matrix
-    compat = ROOT / "scripts" / "compat_matrix.py"
+    compat = ROOT / "scripts" / "api_demo" / "compat_matrix.py"
     if compat.exists():
         run_cmd([PY, str(compat), "--md-out", str(reports / "api_demo" / "compatibility.md")])
 
     # 3) Relational benchmark
-    rel = ROOT / "scripts" / "relational_bench.py"
+    rel = ROOT / "scripts" / "api_demo" / "relational_bench.py"
     if rel.exists():
         run_cmd([PY, str(rel), "--md-out", str(reports / "api_demo" / "relational_api_demo.md")])
 

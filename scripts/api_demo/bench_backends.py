@@ -27,11 +27,12 @@ try:  # when invoked as a module: python -m api_demo.bench_backends
         check_available as utils_check_available,
         format_fixed as utils_format_fixed,
     )
-except Exception:  # when invoked as a script: python scripts/bench_backends.py
+except Exception:  # when invoked as a script: python scripts/api_demo/bench_backends.py
     import sys
     from pathlib import Path
 
-    sys.path.append(str(Path(__file__).resolve().parents[1] / "scripts"))
+    # Add the scripts directory (which contains utils.py) to sys.path
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
     from utils import (  # type: ignore
         Backends as ALL_BACKENDS,
         get_backend_version as utils_get_backend_version,
