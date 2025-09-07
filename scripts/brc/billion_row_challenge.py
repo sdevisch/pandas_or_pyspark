@@ -72,8 +72,12 @@ from typing import List, Optional
 import os as _os
 
 from unipandas import configure_backend
-from unipandas.io import read_csv, read_parquet
 from unipandas.frame import Frame
+try:
+    from .brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
+except Exception:
+    # Allow running as a standalone script
+    from brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
 try:
     from .utils import (
         get_backend_version as utils_get_backend_version,
@@ -195,8 +199,8 @@ def parse_arguments():
     args_list = [
         ("--rows-per-chunk", dict(type=int, default=1_000_000)),
         ("--num-chunks", dict(type=int, default=1)),
-        ("--operation", dict(default="filter", choices=["filter", "groupby"])),
-        ("--materialize", dict(default="head", choices=["head", "count", "all"])),
+        ("--operation", dict(default="groupby", choices=["filter", "groupby"])),
+        ("--materialize", dict(default="count", choices=["head", "count", "all"])),
         ("--data-glob", dict(default=None)),
         ("--only-backend", dict(default=None)),
         ("--md-out", dict(default=None)),
@@ -220,44 +224,37 @@ def resolve_chunks(args) -> List[Path]:
     return ensure_chunks(args.rows_per_chunk, args.num_chunks)
 
 
-def read_frames_for_backend(chunks: List[Path], backend: str) -> List[Frame]:
-    """Read chunk files into backend dataframes and wrap as ``Frame``.
 
-    The IO path supports both Parquet and CSV based on each chunk's file
-    extension.
-    """
-    frames: List[Frame] = []
+
+def _detect_source(chunks: List[Path]) -> str:
+    """Return 'parquet' if any chunk is .parquet, else 'csv'."""
     for p in chunks:
         if p.suffix.lower() == ".parquet":
-            frames.append(read_parquet(str(p)))
-        else:
-            frames.append(read_csv(str(p)))
-    return frames
+            return "parquet"
+    return "csv"
 
 
-def concat_frames(frames: List[Frame], backend: str) -> Frame:
-    """Concatenate a list of Frames using backend-native concat semantics."""
-    if backend == "pyspark":
-        import pyspark.pandas as ps  # type: ignore
-        return Frame(ps.concat([f.to_backend() for f in frames]))
-    if backend == "dask":
-        import dask.dataframe as dd  # type: ignore
-        return Frame(dd.concat([f.to_backend() for f in frames]))
-    import pandas as pd  # type: ignore
-    return Frame(pd.concat([f.to_backend() for f in frames]))
+def _total_rows_from_parquet(chunks: List[Path]) -> Optional[int]:
+    """Sum row counts from Parquet metadata footers (cheap and exact)."""
+    try:
+        import pyarrow.parquet as _pq  # type: ignore
+    except Exception:
+        return None
+    total = 0
+    any_parquet = False
+    for p in chunks:
+        if p.suffix.lower() == ".parquet" and p.exists():
+            any_parquet = True
+            try:
+                total += int(_pq.ParquetFile(str(p)).metadata.num_rows)
+            except Exception:
+                return None
+    return total if any_parquet else None
 
 
-def measure_read(chunks: List[Path], backend: str) -> tuple[Frame, float, int]:
-    """Measure time to read and concatenate all chunks for a backend.
 
-    Returns the combined Frame, elapsed seconds, and total input bytes.
-    """
-    t0 = time.perf_counter()
-    frames = read_frames_for_backend(chunks, backend)
-    combined = concat_frames(frames, backend)
-    t1 = time.perf_counter()
-    total_bytes = sum((p.stat().st_size for p in chunks if p.exists()), 0)
-    return combined, t1 - t0, total_bytes
+
+ 
 
 
 def _materialize_count(backend_df) -> int:
@@ -295,7 +292,6 @@ def _materialize_count(backend_df) -> int:
     try:
         import duckdb as _duck  # type: ignore
         if hasattr(backend_df, "to_df"):
-            # relation: COUNT(*) into pandas scalar
             con = _duck.connect()
             try:
                 rel = backend_df
@@ -304,7 +300,6 @@ def _materialize_count(backend_df) -> int:
                 con.close()
     except Exception:
         pass
-    # Fallback
     try:
         return int(len(backend_df))
     except Exception:
@@ -312,16 +307,19 @@ def _materialize_count(backend_df) -> int:
 
 
 def run_operation(combined: Frame, op: str, materialize: str) -> tuple[int, float]:
-    """Execute the chosen operation and materialize a small ``head``.
+    """Execute the chosen operation and fully evaluate the result.
 
-    Returns the observed row count in pandas and the compute duration.
+    We intentionally avoid partial materialization (e.g., ``head``) to ensure
+    the full dataset flows through the pipeline for true billion-row runs.
+
+    Returns the observed row count (backend-native) and the compute duration.
     """
     t2 = time.perf_counter()
     out = combined.query("x > 0 and y < 0") if op == "filter" else combined.groupby("cat").agg({"x": "sum", "y": "mean"})
+    # Normalize any "head" request to a full count to avoid size reduction
     if materialize == "head":
-        pdf = out.head(10_000_000).to_pandas()
-        rows = len(pdf.index) if hasattr(pdf, "index") else 0
-    elif materialize == "count":
+        materialize = "count"
+    if materialize == "count":
         # Force full evaluation by counting rows without transferring all data
         backend_obj = out.to_backend()
         rows = _materialize_count(backend_obj)
@@ -330,6 +328,28 @@ def run_operation(combined: Frame, op: str, materialize: str) -> tuple[int, floa
         rows = len(pdf_all.index) if hasattr(pdf_all, "index") else 0
     t3 = time.perf_counter()
     return rows, t3 - t2
+
+
+def _build_groupby_preview_lines(chunks: List[Path], backend: str, limit: int = 10) -> List[str]:
+    """Create fixed-width lines showing the first groupby rows for context.
+
+    This is meant for report readability and does not aim to be exhaustive.
+    """
+    try:
+        configure_backend(backend)
+        frames = read_frames_for_backend(chunks, backend)
+        combined = concat_frames(frames, backend)
+        out = combined.groupby("cat").agg({"x": "sum", "y": "mean"}).to_pandas()
+        try:
+            out = out.reset_index()  # ensure 'cat' is a column for printing
+        except Exception:
+            pass
+        out = out.head(limit)
+        headers = [str(c) for c in list(out.columns)]
+        rows = [[str(v) for v in row] for row in out.to_records(index=False)]
+        return format_fixed(headers, rows)
+    except Exception:
+        return ["(preview unavailable)"]
 
 
 def run_backend(backend: str, chunks: List[Path], op: str) -> Result:
@@ -361,12 +381,17 @@ def build_rows(results: List[Result]) -> List[List[str]]:
 
 
 def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str]) -> None:
-    """Write a fixed-width Markdown report including header context and timings."""
+    """Write a fixed-width Markdown report including header context and timings.
+
+    Show all result lines verbatim without truncation.
+    """
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
-    # All results share the same op/materialize for a given run
     op_val = results[0].op if results else "-"
     mat_val = os.environ.get("BRC_MATERIALIZE", "head")
+    source = _detect_source(chunks)
+    input_rows = _total_rows_from_parquet(chunks)
+    rows_text = format_fixed(headers, build_rows(results))
     lines = [
         "# Billion Row Challenge (scaffold)",
         "",
@@ -376,12 +401,24 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         f"- materialize: {mat_val}",
         f"- num_chunks: {len(chunks)}",
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
+        f"- source: {source}",
+        f"- input_rows: {input_rows if input_rows is not None else '-'}",
         "",
         "```text",
-        *format_fixed(headers, build_rows(results)),
+        *rows_text,
         "```",
         "",
     ]
+    # Add a small preview of the groupby output to demonstrate actual results
+    if op_val == "groupby":
+        lines.extend([
+            "Groupby result preview:",
+            "",
+            "```text",
+            *_build_groupby_preview_lines(chunks, results[0].backend if results else "pandas"),
+            "```",
+            "",
+        ])
     out_path = Path(md_out) if md_out else OUT
     out_path.write_text("\n".join(lines))
     print("Wrote", out_path)

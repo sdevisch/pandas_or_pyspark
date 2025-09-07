@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
+"""Lightweight cross-backend benchmark for unipandas.
 
+This script measures the time to:
+1) Load a small CSV into each configured backend
+2) Optionally perform an assign, a query, and a groupby
+3) Materialize a bounded head() for fair compute comparison
 
+It outputs both a nicely aligned console table and, if requested, a
+Markdown report with run context and results.
+"""
 import argparse
 import os
 import sys
@@ -32,18 +40,25 @@ except Exception:  # when invoked as a script: python scripts/bench_backends.py
     )
 
 
-Backends = ALL_BACKENDS
+Backends = ALL_BACKENDS  # Canonical list comes from scripts/utils.py
 
 
 def get_backend_version(backend: str) -> Optional[str]:
+    """Return version string for ``backend`` or None if unavailable."""
     return utils_get_backend_version(backend)
 
 
 def check_available(backend: str) -> bool:
+    """Return True if required modules for ``backend`` can be imported."""
     return utils_check_available(backend)
 
 
 def try_configure(backend: str) -> bool:
+    """Attempt to configure unipandas for ``backend``.
+
+    Returns False with a concise message if the backend is unavailable or
+    initialization fails, allowing the caller to skip gracefully.
+    """
     try:
         if not check_available(backend):
             print(f"[skip] backend={backend}: required modules not available")
@@ -57,6 +72,15 @@ def try_configure(backend: str) -> bool:
 
 @dataclass
 class Result:
+    """Single benchmark result for a backend.
+
+    - backend: Backend name ('pandas', 'dask', 'pyspark', ...)
+    - load_s: Seconds to read the CSV into a backend-native dataframe
+    - compute_s: Seconds to compute and materialize output
+    - rows: Number of rows in the materialized pandas output (if applicable)
+    - used_cores: Approximate parallelism used by the backend
+    - version: Version string of the backend module, if detectable
+    """
     backend: str
     load_s: float
     compute_s: float
@@ -68,6 +92,7 @@ class Result:
 def _format_fixed_width_table(
     headers: List[str], rows: List[List[str]], right_align_from: int = 2
 ) -> List[str]:
+    """Return a fixed-width table as list of strings for aligned printing."""
     widths = [
         max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))
     ]
@@ -115,40 +140,49 @@ def _used_cores_for_backend(backend: str) -> Optional[int]:
                     return int(getattr(sc, "defaultParallelism", None) or 0) or None
             except Exception:
                 pass
-            return None
+            return None  # Spark parallelism is environment-dependent
     except Exception:
         return None
     return None
 
 
 def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[str]) -> List[Result]:
+    """Run the end-to-end micro-benchmark for each backend.
+
+    Steps per backend:
+    1) configure backend
+    2) read CSV
+    3) optional assign/query/groupby
+    4) materialize to pandas (bounded head) and time compute
+    """
     results: List[Result] = []
     for backend in Backends:
-        if not try_configure(backend):
+        if not try_configure(backend):  # Skip unavailable/problematic backends
             continue
 
         t0 = time.perf_counter()
-        df = read_csv(path)
+        df = read_csv(path)  # Backend-aware CSV reader
         t1 = time.perf_counter()
 
         out = df
         if assign:
             try:
-                out = out.assign(c=lambda x: x["a"] + x["b"])  # type: ignore
+                out = out.assign(c=lambda x: x["a"] + x["b"])  # type: ignore  # simple column add
             except Exception as e:
                 print(f"[warn] assign skipped for backend={backend}: {e}")
         if query:
             try:
-                out = out.query(query)
+                out = out.query(query)  # boolean selection
             except Exception as e:
                 print(f"[warn] query skipped for backend={backend}: {e}")
         if groupby:
             try:
-                out = out.groupby(groupby).agg({groupby: "count"})
+                out = out.groupby(groupby).agg({groupby: "count"})  # tiny aggregation
             except Exception as e:
                 print(f"[warn] groupby skipped for backend={backend}: {e}")
 
         t2 = time.perf_counter()
+        # Use a very large head bound to cap transfer without affecting timings
         pdf = out.head(1000000000).to_pandas()
         rows = len(pdf.index) if hasattr(pdf, "index") else None
         t3 = time.perf_counter()

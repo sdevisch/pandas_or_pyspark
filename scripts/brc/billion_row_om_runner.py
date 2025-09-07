@@ -67,7 +67,7 @@ except Exception:
 
 # Import challenge helpers for in-process execution (with path-safe fallback)
 try:
-    from scripts.brc.billion_row_challenge import (  # type: ignore
+    from scripts.brc.brc_shared import (  # type: ignore
         measure_read as _challenge_measure_read,
         run_operation as _challenge_run_operation,
     )
@@ -78,8 +78,8 @@ except Exception:
         __here = __Path(__file__).resolve()
         __sys.path.append(str(__here.parents[0]))  # scripts/brc
         __sys.path.append(str(__here.parents[1]))  # scripts
-        from billion_row_challenge import measure_read as _challenge_measure_read  # type: ignore
-        from billion_row_challenge import run_operation as _challenge_run_operation  # type: ignore
+        from brc_shared import measure_read as _challenge_measure_read  # type: ignore
+        from brc_shared import run_operation as _challenge_run_operation  # type: ignore
     except Exception:
         _challenge_measure_read = None  # type: ignore
         _challenge_run_operation = None  # type: ignore
