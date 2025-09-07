@@ -129,3 +129,34 @@ def write_fixed_markdown(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines))
     print("Wrote", out_path)
+
+
+# -----------------------
+# BRC OM-specific helpers
+# -----------------------
+
+def om_headers() -> List[str]:
+    """Default headers for the Billion Row OM runner report."""
+    return [
+        "backend",
+        "rows(sci)",
+        "operation",
+        "source",
+        "read_s",
+        "compute_s",
+        "input_rows",
+        "ok",
+        "sanity_ok",
+    ]
+
+
+def write_brc_om_report(out_path: Path, rows: List[List[str]]) -> None:
+    """Write the Billion Row OM runner report using standard formatting."""
+    write_fixed_markdown(
+        out_path=out_path,
+        title="Billion Row OM Runner",
+        headers=om_headers(),
+        rows=rows,
+        preface_lines=None,
+        right_align_from=4,
+    )

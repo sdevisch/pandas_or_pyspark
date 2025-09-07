@@ -310,7 +310,17 @@ def _build_row(entry: Entry, size: int) -> List[str]:
 
 def _default_headers() -> List[str]:
     """Headers for the OM report table (fixed-width formatting)."""
-    return ["backend", "rows(sci)", "operation", "source", "read_s", "compute_s", "input_rows", "ok", "sanity_ok"]
+    try:
+        # Use central utilities when available
+        import sys as _sys
+        from pathlib import Path as _Path
+        _here = _Path(__file__).resolve()
+        _sys.path.append(str(_here.parents[1]))  # scripts
+        from utils import om_headers as _om_headers  # type: ignore
+        return _om_headers()
+    except Exception:
+        # Fallback inline definition
+        return ["backend", "rows(sci)", "operation", "source", "read_s", "compute_s", "input_rows", "ok", "sanity_ok"]
 
 
 def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
@@ -404,17 +414,14 @@ def format_measurements_to_rows(steps: List[StepResult]) -> List[List[str]]:
 
 
 def write_report_rows(rows: List[List[str]]) -> None:
-    """Write the OM report (fixed-width Markdown) using shared utilities.
-
-    Falls back to a simple TSV-like fenced block if utilities are unavailable.
-    """
+    """Write the OM report using the central report utility when available."""
     try:
         import sys as _sys
         from pathlib import Path as _Path
         _here = _Path(__file__).resolve()
         _sys.path.append(str(_here.parents[1]))  # scripts
-        from utils import write_fixed_markdown as _write_md  # type: ignore
-        _write_md(OUT, "Billion Row OM Runner", _default_headers(), rows, preface_lines=None, right_align_from=4)
+        from utils import write_brc_om_report as _write_om  # type: ignore
+        _write_om(OUT, rows)
     except Exception:
         # Fallback minimal TSV-like output
         lines = ["# Billion Row OM Runner", "", "```text", "\t".join(_default_headers())]
