@@ -235,6 +235,32 @@ def read_frames_for_backend(chunks: List[Path], backend: str) -> List[Frame]:
     return frames
 
 
+def _detect_source(chunks: List[Path]) -> str:
+    """Return 'parquet' if any chunk is .parquet, else 'csv'."""
+    for p in chunks:
+        if p.suffix.lower() == ".parquet":
+            return "parquet"
+    return "csv"
+
+
+def _total_rows_from_parquet(chunks: List[Path]) -> Optional[int]:
+    """Sum row counts from Parquet metadata footers (cheap and exact)."""
+    try:
+        import pyarrow.parquet as _pq  # type: ignore
+    except Exception:
+        return None
+    total = 0
+    any_parquet = False
+    for p in chunks:
+        if p.suffix.lower() == ".parquet" and p.exists():
+            any_parquet = True
+            try:
+                total += int(_pq.ParquetFile(str(p)).metadata.num_rows)
+            except Exception:
+                return None
+    return total if any_parquet else None
+
+
 def concat_frames(frames: List[Frame], backend: str) -> Frame:
     """Concatenate a list of Frames using backend-native concat semantics."""
     if backend == "pyspark":
@@ -332,6 +358,28 @@ def run_operation(combined: Frame, op: str, materialize: str) -> tuple[int, floa
     return rows, t3 - t2
 
 
+def _build_groupby_preview_lines(chunks: List[Path], backend: str, limit: int = 10) -> List[str]:
+    """Create fixed-width lines showing the first groupby rows for context.
+
+    This is meant for report readability and does not aim to be exhaustive.
+    """
+    try:
+        configure_backend(backend)
+        frames = read_frames_for_backend(chunks, backend)
+        combined = concat_frames(frames, backend)
+        out = combined.groupby("cat").agg({"x": "sum", "y": "mean"}).to_pandas()
+        try:
+            out = out.reset_index()  # ensure 'cat' is a column for printing
+        except Exception:
+            pass
+        out = out.head(limit)
+        headers = [str(c) for c in list(out.columns)]
+        rows = [[str(v) for v in row] for row in out.to_records(index=False)]
+        return format_fixed(headers, rows)
+    except Exception:
+        return ["(preview unavailable)"]
+
+
 def run_backend(backend: str, chunks: List[Path], op: str) -> Result:
     """Run the full read+compute pipeline for a single backend and return timings."""
     configure_backend(backend)
@@ -369,6 +417,8 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
     op_val = results[0].op if results else "-"
     mat_val = os.environ.get("BRC_MATERIALIZE", "head")
+    source = _detect_source(chunks)
+    input_rows = _total_rows_from_parquet(chunks)
     rows_text = format_fixed(headers, build_rows(results))
     lines = [
         "# Billion Row Challenge (scaffold)",
@@ -379,12 +429,24 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         f"- materialize: {mat_val}",
         f"- num_chunks: {len(chunks)}",
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
+        f"- source: {source}",
+        f"- input_rows: {input_rows if input_rows is not None else '-'}",
         "",
         "```text",
         *rows_text,
         "```",
         "",
     ]
+    # Add a small preview of the groupby output to demonstrate actual results
+    if op_val == "groupby":
+        lines.extend([
+            "Groupby result preview:",
+            "",
+            "```text",
+            *_build_groupby_preview_lines(chunks, results[0].backend if results else "pandas"),
+            "```",
+            "",
+        ])
     out_path = Path(md_out) if md_out else OUT
     out_path.write_text("\n".join(lines))
     print("Wrote", out_path)
