@@ -20,7 +20,7 @@ import platform
 
 from unipandas import configure_backend, read_csv
 # Support running as a script or as a module
-try:  # when invoked as a module: python -m scripts.bench_backends
+try:  # when invoked as a module: python -m benchmarks.bench_backends
     from .utils import (
         Backends as ALL_BACKENDS,
         get_backend_version as utils_get_backend_version,
@@ -31,7 +31,7 @@ except Exception:  # when invoked as a script: python scripts/bench_backends.py
     import sys
     from pathlib import Path
 
-    sys.path.append(str(Path(__file__).resolve().parents[0]))
+    sys.path.append(str(Path(__file__).resolve().parents[1] / "scripts"))
     from utils import (  # type: ignore
         Backends as ALL_BACKENDS,
         get_backend_version as utils_get_backend_version,
