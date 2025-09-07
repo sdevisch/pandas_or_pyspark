@@ -25,7 +25,8 @@ except Exception:
     import sys as _sys
     from pathlib import Path as _Path
 
-    _sys.path.append(str(_Path(__file__).resolve().parents[0]))
+    # reach scripts/utils.py from benchmarks/
+    _sys.path.append(str(_Path(__file__).resolve().parents[1] / "scripts"))
     from utils import (  # type: ignore
         Backends as ALL_BACKENDS,
         get_backend_version,
