@@ -76,7 +76,7 @@ def run_step(backend: str, rows: int, budget_s: float, op: str) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="BRC scale runner (1M→1B) with 3-minute per-step cap")
     parser.add_argument("--budget", type=float, default=180.0, help="Seconds per backend-size step")
-    parser.add_argument("--operation", default="filter", choices=["filter", "groupby"], help="Operation to run")
+    parser.add_argument("--operation", default="groupby", choices=["filter", "groupby"], help="Operation to run")
     args = parser.parse_args()
 
     headers = ["backend", "rows", "ok"]

@@ -75,7 +75,7 @@ def can_process_within(backend: str, rows: int, budget_s: float, operation: str,
 def main():
     parser = argparse.ArgumentParser(description="1-minute BRC runner: max rows per backend under 60s")
     parser.add_argument("--budget", type=float, default=60.0, help="Seconds per attempt")
-    parser.add_argument("--operation", choices=["filter", "groupby"], default="filter")
+    parser.add_argument("--operation", choices=["filter", "groupby"], default="groupby")
     parser.add_argument("--data-glob", default=None, help="Optional glob to use existing data instead of generating")
     parser.add_argument(
         "--data-glob-template",
