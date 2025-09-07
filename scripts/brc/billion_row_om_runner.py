@@ -472,7 +472,12 @@ def main():
     """Run OM flow end-to-end: parse args → measure → format → write report."""
     # 1) Parse CLI arguments (kept minimal for readability)
     parser = argparse.ArgumentParser(description="Order-of-magnitude BRC runner with per-step cap")
-    parser.add_argument("--budgets", type=float, default=DEFAULT_BUDGET_S)
+    parser.add_argument(
+        "--budgets",
+        type=float,
+        default=DEFAULT_BUDGET_S,
+        help="Per-step wall-clock budget in seconds (default: 180s ≈ 3 minutes)",
+    )
     args = parser.parse_args()
 
     # 2) Collect timing measurements within the specified budget
