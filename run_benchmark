@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Entry point to run lightweight unipandas benchmarks and aggregate a report.
+"""Entry point to run lightweight unipandas API demos and aggregate a report.
 
-This script orchestrates two benchmark scenarios by calling
-`scripts/benchmarks/bench_backends.py` and then concatenates the
+This script orchestrates two API demo scenarios by calling
+`scripts/api_demo/bench_backends.py` and then concatenates the
 scenario-specific Markdown outputs into a single aggregate report.
 
 Design goals:
@@ -21,13 +21,13 @@ from datetime import datetime
 # Repository paths
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT \/ "data"
-# Write reports under the benchmarks namespace
-REPORTS = ROOT \/ "reports" \/ "benchmarks"
+# Write reports under the api_demo namespace
+REPORTS = ROOT \/ "reports" \/ "api_demo"
 REPORTS.mkdir(parents=True, exist_ok=True)
 REPORT = REPORTS \/ "benchmark.md"
 
-# Updated path to the benchmark driver
-SCRIPT = ROOT \/ "scripts" \/ "benchmarks" \/ "bench_backends.py"
+# Updated path to the API demo driver
+SCRIPT = ROOT \/ "scripts" \/ "api_demo" \/ "bench_backends.py"
 CODE_FILE = "scripts/examples.py"
 
 # Python executable used to spawn the benchmark driver
@@ -80,7 +80,7 @@ def init_report(path: Path) -> None:
     """Initialize the aggregate report with title and timestamp."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # human-readable timestamp
     with path.open("w") as f:
-        f.write(f"# unipandas benchmarks\n\nGenerated at: {ts}\n\n")
+        f.write(f"# unipandas API demos\n\nGenerated at: {ts}\n\n")
 
 
 def build_command(in_path: Path, query: str, groupby: str, md_out: Path) -> list[str]:
@@ -119,8 +119,8 @@ def main() -> int:
     """Orchestrate two benchmark scenarios and print the final report path."""
     p1, p2 = ensure_data()  # create input CSVs if missing
     init_report(REPORT)  # start fresh aggregate report
-    run_scenario("Scenario 1: example.csv assign+query+groupby", p1, "a > 0", "cat", "benchmark_s1.md")
-    run_scenario("Scenario 2: example_small.csv assign+query+groupby", p2, "a >= 0", "cat", "benchmark_s2.md")
+    run_scenario("Scenario 1: example.csv assign+query+groupby", p1, "a > 0", "cat", "api_demo_s1.md")
+    run_scenario("Scenario 2: example_small.csv assign+query+groupby", p2, "a >= 0", "cat", "api_demo_s2.md")
     print("\nAggregated report:", REPORT)  # point user to the final output
     return 0
 

@@ -37,9 +37,9 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-REPORTS = ROOT / "reports" / "benchmarks"
+REPORTS = ROOT / "reports" / "api_demo"
 REPORTS.mkdir(exist_ok=True)
-OUT = REPORTS / "relational_benchmark.md"
+OUT = REPORTS / "relational_api_demo.md"
 
 Backends = ALL_BACKENDS
 
@@ -160,7 +160,7 @@ def main():
         for r in results
     ]
     content = [
-        "# Relational benchmarks",
+        "# Relational API demos",
         "",
         f"Generated at: {ts}",
         "",
