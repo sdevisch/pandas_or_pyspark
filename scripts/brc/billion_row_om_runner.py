@@ -52,6 +52,16 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+try:
+    # Preferred: import via package path when executed from repo root
+    from scripts.utils import write_brc_om_report  # type: ignore
+except Exception:
+    # Fallback: allow direct execution from scripts/brc by amending sys.path
+    import sys as _sys
+    from pathlib import Path as _Path
+    _here = _Path(__file__).resolve()
+    _sys.path.append(str(_here.parents[1]))  # scripts
+    from utils import write_brc_om_report  # type: ignore
 
 # Repository root (two levels up from this file) so paths are stable regardless
 # of the current working directory from which the script is invoked.
@@ -308,19 +318,7 @@ def _build_row(entry: Entry, size: int) -> List[str]:
     return [entry.backend, f"{size:.1e}", entry.operation, entry.source, rs, cs, ir, ok]
 
 
-def _default_headers() -> List[str]:
-    """Headers for the OM report table (fixed-width formatting)."""
-    try:
-        # Use central utilities when available
-        import sys as _sys
-        from pathlib import Path as _Path
-        _here = _Path(__file__).resolve()
-        _sys.path.append(str(_here.parents[1]))  # scripts
-        from utils import om_headers as _om_headers  # type: ignore
-        return _om_headers()
-    except Exception:
-        # Fallback inline definition
-        return ["backend", "rows(sci)", "operation", "source", "read_s", "compute_s", "input_rows", "ok", "sanity_ok"]
+## No local header logic; headers are defined in scripts.utils
 
 
 def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
@@ -415,12 +413,7 @@ def format_measurements_to_rows(steps: List[StepResult]) -> List[List[str]]:
 
 def write_report_rows(rows: List[List[str]]) -> None:
     """Write the OM report using the central utilities."""
-    import sys as _sys
-    from pathlib import Path as _Path
-    _here = _Path(__file__).resolve()
-    _sys.path.append(str(_here.parents[1]))  # scripts
-    from utils import write_brc_om_report as _write_om  # type: ignore
-    _write_om(OUT, rows)
+    write_brc_om_report(OUT, rows)
 
 
 def main():
