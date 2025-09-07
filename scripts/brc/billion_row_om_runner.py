@@ -155,7 +155,14 @@ def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
 
 
 def _parquet_glob(size: int) -> str:
-    """Return the default glob that points to Parquet chunks for a given size."""
+    """Return the default glob that points to Parquet chunks for a given size.
+
+    Prefers data/brc_scales/parquet_{size}/ if present, otherwise falls back
+    to data/brc_{size}/*.parquet.
+    """
+    scales_dir = ROOT / "data" / "brc_scales" / f"parquet_{size}"
+    if scales_dir.exists():
+        return str(scales_dir / "*.parquet")
     return str(ROOT / f"data/brc_{size}" / "*.parquet")
 def _csv_glob(size: int) -> str:
     """Return the default glob that points to CSV chunks for a given size."""
