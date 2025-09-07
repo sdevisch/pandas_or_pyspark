@@ -21,8 +21,9 @@ from datetime import datetime
 # Repository paths
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT \/ "data"
-REPORTS = ROOT \/ "reports"
-REPORTS.mkdir(exist_ok=True)
+# Write reports under the benchmarks namespace
+REPORTS = ROOT \/ "reports" \/ "benchmarks"
+REPORTS.mkdir(parents=True, exist_ok=True)
 REPORT = REPORTS \/ "benchmark.md"
 
 # Updated path to the benchmark driver

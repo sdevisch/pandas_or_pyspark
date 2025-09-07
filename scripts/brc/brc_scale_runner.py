@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import List
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORTS = ROOT / "reports"
-REPORTS.mkdir(exist_ok=True)
+REPORTS = ROOT / "reports" / "brc"
+REPORTS.mkdir(parents=True, exist_ok=True)
 OUT = REPORTS / "brc_scale.md"
 
 PY = sys.executable or "python3"
