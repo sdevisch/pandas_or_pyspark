@@ -65,6 +65,25 @@ except Exception:
     _sys.path.append(str(_here.parents[1]))  # scripts
     from utils import write_brc_om_report  # type: ignore
 
+# Import challenge helpers for in-process execution (with path-safe fallback)
+try:
+    from scripts.brc.billion_row_challenge import (  # type: ignore
+        measure_read as _challenge_measure_read,
+        run_operation as _challenge_run_operation,
+    )
+except Exception:
+    try:
+        import sys as __sys
+        from pathlib import Path as __Path
+        __here = __Path(__file__).resolve()
+        __sys.path.append(str(__here.parents[0]))  # scripts/brc
+        __sys.path.append(str(__here.parents[1]))  # scripts
+        from billion_row_challenge import measure_read as _challenge_measure_read  # type: ignore
+        from billion_row_challenge import run_operation as _challenge_run_operation  # type: ignore
+    except Exception:
+        _challenge_measure_read = None  # type: ignore
+        _challenge_run_operation = None  # type: ignore
+
 # Repository root (two levels up from this file) so paths are stable regardless
 # of the current working directory from which the script is invoked.
 ROOT = Path(__file__).resolve().parents[2]
@@ -311,6 +330,44 @@ def _run_challenge(cmd: List[str], env: dict, budget_s: float, backend: str) -> 
     except Exception:
         return False, None, None
 
+
+def _run_inproc_for_glob(backend: str, glob_path: str, budget_s: float) -> tuple[bool, Optional[float], Optional[float]]:
+    """Run the challenge in-process for existing data matched by ``glob_path``.
+
+    Falls back to subprocess if challenge helpers are unavailable or for
+    backends that require isolated processes (e.g., pyspark).
+    """
+    # Prefer subprocess for pyspark to avoid session conflicts
+    if backend == "pyspark":
+        env = _env_for_backend(backend)
+        return _run_challenge(_cmd_for_glob(backend, glob_path), env, budget_s, backend)
+    if _challenge_measure_read is None or _challenge_run_operation is None:
+        env = _env_for_backend(backend)
+        return _run_challenge(_cmd_for_glob(backend, glob_path), env, budget_s, backend)
+    try:
+        # Configure backend in-process
+        from unipandas import configure_backend as _configure
+        _configure(backend)
+
+        # Expand glob to Paths
+        import glob as _glob
+        chunk_paths = [Path(p) for p in _glob.glob(glob_path)]
+        if not chunk_paths:
+            return False, None, None
+
+        # Measure read/concat and then run operation
+        from time import perf_counter as _now
+        combined, read_s, _total_bytes = _challenge_measure_read(chunk_paths, backend)  # type: ignore
+        t0 = _now()
+        rows_observed, compute_s = _challenge_run_operation(combined, OPERATION, os.environ.get("BRC_MATERIALIZE", "head"))  # type: ignore
+        _ = rows_observed  # unused here; OM captures input_rows separately
+        elapsed = read_s + compute_s if (read_s is not None and compute_s is not None) else (compute_s or 0.0)
+        if elapsed > budget_s:
+            return False, None, None
+        return True, float(read_s), float(compute_s)
+    except Exception:
+        return False, None, None
+
 # NOTE: _build_row is obsolete in favor of StepResult -> rows formatting
 
 
@@ -322,8 +379,8 @@ def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
     _ensure_parquet_for_size(size)  # Opportunistically make Parquet available
     pg = _parquet_glob(size)
     if _has_matches(pg):
-        env = _env_for_backend(backend)
-        ok, rs, cs = _run_challenge(_cmd_for_glob(backend, pg), env, budget, backend)
+        # Prefer in-process for non-Spark backends when possible
+        ok, rs, cs = _run_inproc_for_glob(backend, pg, budget)
         return Entry(
             backend=backend,
             rows=size,
