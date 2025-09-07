@@ -1,18 +1,18 @@
 # Relational API demos
 
-Generated at: 2025-09-07 15:48:26
+Generated at: 2025-09-07 16:11:54
 
 ```text
 backend  version       op  load_s  compute_s     rows  used_cores
 -------  --------  ------  ------  ---------  -------  ----------
-pandas   2.2.2       join  0.1843     0.0628  2000000           1
-pandas   2.2.2     concat  0.0000     0.0336  2000000           1
-dask     2024.5.1    join  0.0057     0.2467  2000000          11
-dask     2024.5.1  concat  0.0000     0.2052  1000000          11
-pyspark  3.5.1       join  4.8954     7.5782  2000000          11
-pyspark  3.5.1     concat  0.0000     5.7014  2000000          11
-polars   1.33.0      join  0.0355     0.0612  2000000           1
-polars   1.33.0    concat  0.0000     0.0315  2000000           1
-duckdb   1.3.2       join  0.1542     0.0536  2000000           1
-duckdb   1.3.2     concat  0.0000     0.0325  2000000           1
+pandas   2.2.2       join  0.1760     0.0590  2000000           1
+pandas   2.2.2     concat  0.0000     0.0321  2000000           1
+dask     2024.5.1    join  0.0048     0.2375  2000000          11
+dask     2024.5.1  concat  0.0000     0.1988  1000000          11
+pyspark  3.5.1       join  4.3598     6.4220  2000000          11
+pyspark  3.5.1     concat  0.0000     5.5514  2000000          11
+polars   1.33.0      join  0.0215     0.0569  2000000           1
+polars   1.33.0    concat  0.0000     0.0311  2000000           1
+duckdb   1.3.2       join  0.1171     0.0503  2000000           1
+duckdb   1.3.2     concat  0.0000     0.0290  2000000           1
 ```

@@ -1,20 +1,26 @@
 # Billion Row Challenge (scaffold)
 
-Generated at: 2025-09-07 16:08:42
+Generated at: 2025-09-07 16:16:55
 
-- operation: filter
+- operation: groupby
 - materialize: count
 - num_chunks: 1
-- total_bytes: 15672
-- source: csv
-- input_rows: -
+- total_bytes: 73052357
+- source: parquet
+- input_rows: 10000000
 
 ```text
 backend  version       op  read_s  compute_s  rows  used_cores
--------  --------  ------  ------  ---------  ----  ----------
-pandas   2.2.2     filter  0.0010     0.0025   252           1
-dask     2024.5.1  filter  0.0038     0.0049   252          11
-pyspark  3.5.1     filter  3.8343     0.3367   252          11
-polars   1.33.0    filter  0.0028     0.0015   252           1
-duckdb   1.3.2     filter  0.0139     0.0009   252           1
+-------  -------  -------  ------  ---------  ----  ----------
+pyspark  3.5.1    groupby  3.1573     1.4301     3          11
+```
+
+Groupby result preview:
+
+```text
+cat  x                            y
+---  --------  --------------------
+x    -1119005  -0.27007828729891425
+z    119800     -0.2321410027150538
+y    -1041988   0.22006234043638306
 ```
