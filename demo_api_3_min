@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Entry point to run lightweight unipandas API demos and aggregate a report.
+"""Three-minute unipandas API demo orchestrator.
 
-This script orchestrates a 3-minute API demo by running the smoke test
-(`scripts/api_demo/smoke_reports.py`) and then concatenates the
-generated Markdown outputs into a single aggregate report.
+This program provides a single entry point to quickly showcase the
+unipandas API across multiple backends in approximately three minutes.
+It does so by:
+
+1) Ensuring tiny sample CSV inputs exist under ``data/`` (fast to generate)
+2) Running the API demo smoke script (``scripts/api_demo/smoke_reports.py``)
+   which produces multiple Markdown fragments under ``reports/api_demo``
+3) Aggregating those fragments into one top-level Markdown report at
+   ``reports/api_demo/demo_api_3_min.md``
 
 Design goals:
 - Keep every function to no more than seven statements.
@@ -19,28 +25,47 @@ from datetime import datetime
 
 
 # Repository paths
+# Resolve repository root as the directory containing this file
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT \/ "data"
+# Location for small, quick-to-generate CSVs used by demos
+DATA = ROOT / "data"
 # Write reports under the api_demo namespace
-REPORTS = ROOT \/ "reports" \/ "api_demo"
+REPORTS = ROOT / "reports" / "api_demo"
+# Ensure directory exists before writing any fragments or aggregates
 REPORTS.mkdir(parents=True, exist_ok=True)
-REPORT = REPORTS \/ "demo_api_3_min.md"
+# Aggregated output produced by this script
+REPORT = REPORTS / "demo_api_3_min.md"
 
 # Script paths used by the orchestrator
-SMOKE = ROOT \/ "scripts" \/ "api_demo" \/ "smoke_reports.py"
+# Smoke script generates per-section reports to be aggregated
+SMOKE = ROOT / "scripts" / "api_demo" / "smoke_reports.py"
 
 # Python executable used to spawn the benchmark driver
 PY = sys.executable or "python3"
 
 
 def run_command(command_parts):
-    """Run a subprocess command, echoing it first for transparency."""
-    print("$", " ".join(command_parts))  # show the command for reproducibility
-    subprocess.run(command_parts, check=True)  # raise if benchmark fails
+    """Run a subprocess command and raise on failure.
+
+    Args:
+        command_parts: Command and arguments as a list of strings, suitable
+            for ``subprocess.run`` without shell expansion.
+
+    This echoes the command for reproducibility and uses ``check=True`` so
+    any non-zero exit status aborts the demo early with a clear error.
+    """
+    print("$", " ".join(command_parts))  # show the exact command
+    subprocess.run(command_parts, check=True)  # fail fast if it errors
 
 
 def _write_example_csv(path: Path) -> Path:
-    """Create a moderately sized CSV with random data if it does not exist."""
+    """Create a moderately sized CSV with random demo data if missing.
+
+    The file has columns ``a``, ``b``, and ``cat`` to align with demo scripts.
+
+    Returns:
+        Path to the created (or pre-existing) CSV file.
+    """
     if path.exists():  # avoid regenerating on subsequent runs
         return path
     import csv, random  # local import keeps module scope tidy
@@ -49,13 +74,19 @@ def _write_example_csv(path: Path) -> Path:
         w = csv.writer(f)
         w.writerow(["a", "b", "cat"])  # header row
         from random import randint, choice
-        for _ in range(200000):  # generate synthetic rows
+        for _ in range(200000):  # balance speed and substance
             w.writerow([randint(-1000, 1000), randint(-1000, 1000), choice(["x", "y", "z"])])
     return path
 
 
 def _write_example_small_csv(path: Path) -> Path:
-    """Create a tiny CSV with a few hand-picked rows if it does not exist."""
+    """Create a tiny CSV with a few hand-picked rows if missing.
+
+    This dataset is used for quick relational and compatibility checks.
+
+    Returns:
+        Path to the created (or pre-existing) CSV file.
+    """
     if path.exists():
         return path
     import csv
@@ -68,43 +99,72 @@ def _write_example_small_csv(path: Path) -> Path:
 
 
 def ensure_data() -> tuple[Path, Path]:
-    """Ensure both example datasets are present and return their paths."""
-    DATA.mkdir(exist_ok=True)  # make data directory once
-    p1 = _write_example_csv(DATA \/ "example.csv")
-    p2 = _write_example_small_csv(DATA \/ "example_small.csv")
+    """Ensure both example datasets exist and return their paths.
+
+    Returns:
+        Tuple of Paths ``(example_csv, example_small_csv)``.
+    """
+    DATA.mkdir(exist_ok=True)  # create data directory if missing
+    p1 = _write_example_csv(DATA / "example.csv")
+    p2 = _write_example_small_csv(DATA / "example_small.csv")
     return p1, p2
 
 
 def init_report(path: Path) -> None:
-    """Initialize the aggregate report with title and timestamp."""
+    """Initialize the aggregate report with a title and timestamp.
+
+    Args:
+        path: Full path to the aggregate Markdown report to create.
+    """
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # human-readable timestamp
     with path.open("w") as f:
-        f.write(f"# unipandas API demos\n\nGenerated at: {ts}\n\n")
+        f.write(f"# unipandas API demos\n\nGenerated at: {ts}\n\n")  # top-level heading
 
 
 def build_smoke_command() -> list[str]:
-    """Construct the command to run the API demo smoke test."""
+    """Construct the command to run the API demo smoke test.
+
+    Returns:
+        List of command tokens to invoke the smoke script via Python.
+    """
     return [PY, str(SMOKE)]
 
 
 def append_section(report_path: Path, title: str, md_part: Path) -> None:
-    """Append a titled section with content from a Markdown fragment file."""
+    """Append a titled section with content from a Markdown fragment file.
+
+    Args:
+        report_path: Aggregate Markdown file to append to.
+        title: Section title to add before the included content.
+        md_part: Path to a file containing a Markdown fragment to embed.
+    """
     with report_path.open("a") as f:
-        f.write(f"\n## {title}\n\n")  # section header in the aggregate report
-        f.write(md_part.read_text())  # embed scenario-specific results
+        f.write(f"\n## {title}\n\n")  # Write a second-level heading
+        f.write(md_part.read_text())  # Insert the fragment verbatim
 
 
 def run_smoke_and_append() -> None:
-    """Run the smoke test and append its generated Markdown sections."""
-    run_command(build_smoke_command())
-    # Append sections produced by the smoke script
-    append_section(REPORT, "API demo smoke run", REPORTS \/ "api_demo_smoke.md")
-    append_section(REPORT, "Compatibility matrix", REPORTS \/ "compatibility.md")
-    append_section(REPORT, "Relational API demos", REPORTS \/ "relational_api_demo.md")
+    """Run the smoke script and append its generated Markdown sections.
+
+    The smoke script is responsible for writing these files under
+    ``reports/api_demo``:
+    - ``api_demo_smoke.md``: quick backends run
+    - ``compatibility.md``: operations compatibility across backends
+    - ``relational_api_demo.md``: small join/concat demonstrations
+    """
+    run_command(build_smoke_command())  # execute the smoke generator
+    # Append sections produced by the smoke script in a friendly order
+    append_section(REPORT, "API demo smoke run", REPORTS / "api_demo_smoke.md")
+    append_section(REPORT, "Compatibility matrix", REPORTS / "compatibility.md")
+    append_section(REPORT, "Relational API demos", REPORTS / "relational_api_demo.md")
 
 
 def main() -> int:
-    """Run the 3-minute API demo smoke flow and print the final report path."""
+    """Run the 3-minute API demo smoke flow and print the output path.
+
+    Returns:
+        0 on success; non-zero on failure (by exception earlier).
+    """
     ensure_data()  # ensure inputs for quick demos
     init_report(REPORT)  # start fresh aggregate report
     run_smoke_and_append()  # execute smoke and aggregate outputs
