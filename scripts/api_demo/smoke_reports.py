@@ -72,12 +72,17 @@ def main() -> int:
     # 5) BRC one-minute (tiny check)
     om1 = ROOT / "scripts" / "brc" / "brc_one_minute_runner.py"
     if om1.exists():
-        run_cmd([PY, str(om1), "--budget", "10", "--operation", "filter"])  # short budget
+        run_cmd([PY, str(om1), "--budget", "60", "--operation", "filter"])  # 1-minute budget
 
     # 6) BRC order-of-magnitude (reduced)
     om = ROOT / "scripts" / "brc" / "billion_row_om_runner.py"
     if om.exists():
-        run_cmd([PY, str(om), "--budgets", "10"])  # short budget per step
+        run_cmd([PY, str(om), "--budgets", "60"])  # 1-minute per step
+
+    # 7) BRC scale runner (ensure scales wiring works under 60s cap)
+    brc_scale = ROOT / "scripts" / "brc" / "brc_scale_runner.py"
+    if brc_scale.exists():
+        run_cmd([PY, str(brc_scale), "--budget", "60", "--operation", "groupby"])  # 1-minute budget
 
     print("Smoke reports generated under", reports)
     return 0

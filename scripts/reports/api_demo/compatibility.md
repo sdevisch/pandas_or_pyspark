@@ -1,6 +1,6 @@
 # Compatibility matrix
 
-Generated at: 2025-09-07 16:11:29
+Generated at: 2025-09-07 16:22:28
 
 ```text
   operation    pandas  dask  pyspark
