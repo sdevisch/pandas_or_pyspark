@@ -1,13 +1,13 @@
 # 1-minute BRC runner
 
-Generated at: 2025-09-07 09:32:29
+Generated at: 2025-09-07 13:04:16
 
 ```text
 backend  max_rows_within_1min  elapsed_s_at_max
 -------  --------------------  ----------------
-pandas                1.0e+06             7.053
-dask                  1.0e+06             7.348
-pyspark               1.0e+06             7.120
-polars                1.0e+06             7.163
-duckdb                1.0e+06             7.203
+pandas                1.0e+08             7.936
+dask                  1.0e+09             7.970
+pyspark               1.0e+09             8.795
+polars                1.0e+09             8.533
+duckdb                1.0e+09             8.566
 ```
