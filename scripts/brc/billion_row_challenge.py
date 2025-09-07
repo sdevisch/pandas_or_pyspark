@@ -338,16 +338,19 @@ def _materialize_count(backend_df) -> int:
 
 
 def run_operation(combined: Frame, op: str, materialize: str) -> tuple[int, float]:
-    """Execute the chosen operation and materialize a small ``head``.
+    """Execute the chosen operation and fully evaluate the result.
 
-    Returns the observed row count in pandas and the compute duration.
+    We intentionally avoid partial materialization (e.g., ``head``) to ensure
+    the full dataset flows through the pipeline for true billion-row runs.
+
+    Returns the observed row count (backend-native) and the compute duration.
     """
     t2 = time.perf_counter()
     out = combined.query("x > 0 and y < 0") if op == "filter" else combined.groupby("cat").agg({"x": "sum", "y": "mean"})
+    # Normalize any "head" request to a full count to avoid size reduction
     if materialize == "head":
-        pdf = out.head(10_000_000).to_pandas()
-        rows = len(pdf.index) if hasattr(pdf, "index") else 0
-    elif materialize == "count":
+        materialize = "count"
+    if materialize == "count":
         # Force full evaluation by counting rows without transferring all data
         backend_obj = out.to_backend()
         rows = _materialize_count(backend_obj)
