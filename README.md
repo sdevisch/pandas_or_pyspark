@@ -4,7 +4,7 @@ unipandas
 This repository serves three purposes:
 
 1. Demonstrate which pandas syntax different backends share, and where they differ (with workarounds).
-2. Run basic, reproducible benchmarks across backends.
+2. Run API demos across backends to illustrate behavior and performance.
 3. Run a Billion Row Challenge (BRC) with safe scaffolding and an order-of-magnitude runner.
 
 Unified pandas-like API that runs with these backends:
@@ -84,10 +84,10 @@ Repository structure
   - `src/unipandas/io.py`: IO helpers (`read_csv`, `read_parquet`) returning `Frame`
 
 - Scripts (CLI tools, demos and runners)
-  - Compatibility and benches
+  - API demos
     - `scripts/bench_backends.py`: time the same workload across pandas, Dask, pandas-on-Spark; writes Markdown via `--md-out`
-    - `scripts/relational_bench.py`: join/concat timings; writes `reports/relational_benchmark.md`
-    - `scripts/compat_matrix.py`: generate a compatibility matrix; writes `reports/compatibility.md`
+    - `scripts/relational_bench.py`: join/concat demos; writes `reports/api_demo/relational_api_demo.md`
+    - `scripts/compat_matrix.py`: generate a compatibility matrix; writes `reports/api_demo/compatibility.md`
   - Billion Row Challenge (under `scripts/brc/`, outputs in `reports/brc/`)
     - `billion_row_challenge.py`: scalable scaffold (chunked Parquet/CSV, filter/groupby, materialization modes)
     - `billion_row_om_runner.py`: order-of-magnitude runner with per-step timeout
@@ -95,10 +95,10 @@ Repository structure
     - `brc_scale_runner.py`, `brc_one_minute_runner.py`: convenience runners
 
 - Reports (generated)
-  - `reports/benchmark.md`: aggregated results from `run_benchmark`
-  - `reports/benchmark_s1.md`, `reports/benchmark_s2.md`: per-scenario outputs
-  - `reports/compatibility.md`: fixed-width compatibility table
-  - `reports/relational_benchmark.md`: join/concat performance
+  - `reports/api_demo/demo_api_3_min.md`: aggregated results from `demo_api_3_min`
+  - `reports/api_demo/api_demo_smoke.md`: smoke run summary
+  - `reports/api_demo/compatibility.md`: fixed-width compatibility table
+  - `reports/api_demo/relational_api_demo.md`: join/concat demo timings
   - `reports/billion_row_challenge.md`: BRC scaffold output
   - `reports/billion_row_om.md`: order-of-magnitude BRC results
 
@@ -107,8 +107,8 @@ Quick start
 
 1) Ensure a Python env with desired backends (see Install). For Spark:
    `export PYARROW_IGNORE_TIMEZONE=1`
-2) Quick benchmark across backends:
-   `python scripts/bench_backends.py data/example.csv --assign --query "a > 0" --groupby cat --md-out reports/quick.md`
+2) Quick API demo across backends:
+   `python scripts/bench_backends.py data/example.csv --assign --query "a > 0" --groupby cat --md-out reports/api_demo/quick.md`
 3) Relational workloads (join/concat):
    `python scripts/relational_bench.py`
 4) Compatibility matrix:

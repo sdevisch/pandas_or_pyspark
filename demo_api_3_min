@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Entry point to run lightweight unipandas benchmarks and aggregate a report.
+"""Entry point to run lightweight unipandas API demos and aggregate a report.
 
-This script orchestrates two benchmark scenarios by calling
-`scripts/benchmarks/bench_backends.py` and then concatenates the
-scenario-specific Markdown outputs into a single aggregate report.
+This script orchestrates a 3-minute API demo by running the smoke test
+(`scripts/api_demo/smoke_reports.py`) and then concatenates the
+generated Markdown outputs into a single aggregate report.
 
 Design goals:
 - Keep every function to no more than seven statements.
@@ -21,13 +21,13 @@ from datetime import datetime
 # Repository paths
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT \/ "data"
-REPORTS = ROOT \/ "reports"
-REPORTS.mkdir(exist_ok=True)
-REPORT = REPORTS \/ "benchmark.md"
+# Write reports under the api_demo namespace
+REPORTS = ROOT \/ "reports" \/ "api_demo"
+REPORTS.mkdir(parents=True, exist_ok=True)
+REPORT = REPORTS \/ "demo_api_3_min.md"
 
-# Updated path to the benchmark driver
-SCRIPT = ROOT \/ "scripts" \/ "benchmarks" \/ "bench_backends.py"
-CODE_FILE = "scripts/examples.py"
+# Script paths used by the orchestrator
+SMOKE = ROOT \/ "scripts" \/ "api_demo" \/ "smoke_reports.py"
 
 # Python executable used to spawn the benchmark driver
 PY = sys.executable or "python3"
@@ -79,25 +79,12 @@ def init_report(path: Path) -> None:
     """Initialize the aggregate report with title and timestamp."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # human-readable timestamp
     with path.open("w") as f:
-        f.write(f"# unipandas benchmarks\n\nGenerated at: {ts}\n\n")
+        f.write(f"# unipandas API demos\n\nGenerated at: {ts}\n\n")
 
 
-def build_command(in_path: Path, query: str, groupby: str, md_out: Path) -> list[str]:
-    """Construct the benchmark driver command for a scenario."""
-    return [
-        PY,
-        str(SCRIPT),  # run the cross-backend benchmark driver
-        str(in_path),  # input CSV
-        "--assign",  # include a simple column assignment
-        "--query",
-        query,  # filter expression
-        "--groupby",
-        groupby,  # grouping key
-        "--code-file",
-        CODE_FILE,  # companion pandas sample code for context
-        "--md-out",
-        str(md_out),  # per-scenario Markdown output
-    ]
+def build_smoke_command() -> list[str]:
+    """Construct the command to run the API demo smoke test."""
+    return [PY, str(SMOKE)]
 
 
 def append_section(report_path: Path, title: str, md_part: Path) -> None:
@@ -107,20 +94,21 @@ def append_section(report_path: Path, title: str, md_part: Path) -> None:
         f.write(md_part.read_text())  # embed scenario-specific results
 
 
-def run_scenario(title: str, csv_path: Path, query: str, groupby: str, out_name: str) -> None:
-    """Execute one scenario end-to-end and append its results to the report."""
-    md_out = REPORTS \/ out_name  # where the driver writes this scenario's results
-    run_command(build_command(csv_path, query, groupby, md_out))  # run driver
-    append_section(REPORT, title, md_out)  # add to aggregate report
+def run_smoke_and_append() -> None:
+    """Run the smoke test and append its generated Markdown sections."""
+    run_command(build_smoke_command())
+    # Append sections produced by the smoke script
+    append_section(REPORT, "API demo smoke run", REPORTS \/ "api_demo_smoke.md")
+    append_section(REPORT, "Compatibility matrix", REPORTS \/ "compatibility.md")
+    append_section(REPORT, "Relational API demos", REPORTS \/ "relational_api_demo.md")
 
 
 def main() -> int:
-    """Orchestrate two benchmark scenarios and print the final report path."""
-    p1, p2 = ensure_data()  # create input CSVs if missing
+    """Run the 3-minute API demo smoke flow and print the final report path."""
+    ensure_data()  # ensure inputs for quick demos
     init_report(REPORT)  # start fresh aggregate report
-    run_scenario("Scenario 1: example.csv assign+query+groupby", p1, "a > 0", "cat", "benchmark_s1.md")
-    run_scenario("Scenario 2: example_small.csv assign+query+groupby", p2, "a >= 0", "cat", "benchmark_s2.md")
-    print("\nAggregated report:", REPORT)  # point user to the final output
+    run_smoke_and_append()  # execute smoke and aggregate outputs
+    print("\nAggregated report:", REPORT)
     return 0
 
 
