@@ -1,37 +1,37 @@
 # Billion Row OM Runner
 
-Generated at: 2025-09-07 09:33:19
+Generated at: 2025-09-07 09:52:18
 
 ```text
-backend  rows(sci)  read_s  compute_s  input_rows   ok
--------  ---------  ------  ---------  ----------  ---
-pandas   1.0e+03    0.0012     0.0026        1000  yes
-pandas   1.0e+04    0.0025     0.0031       10000  yes
-pandas   1.0e+05    0.0136     0.0031      100000  yes
-pandas   1.0e+06    0.1179     0.0090     1000000  yes
-pandas   1.0e+07    0.7335     0.0394    10000000  yes
-pandas   1.0e+08    0.7491     0.0416   100000000  yes
-dask     1.0e+03    0.0041     0.0078        1000  yes
-dask     1.0e+04    0.0043     0.0095       10000  yes
-dask     1.0e+05    0.0048     0.0227      100000  yes
-dask     1.0e+06    0.0045     0.1352     1000000  yes
-dask     1.0e+07    0.0045     0.2825    10000000  yes
-dask     1.0e+08    0.0044     0.2910   100000000  yes
-pyspark  1.0e+03    4.2189     0.2657        1000  yes
-pyspark  1.0e+04    4.1128     0.2972       10000  yes
-pyspark  1.0e+05    4.5170     0.4601      100000  yes
-pyspark  1.0e+06    4.3745     1.8553     1000000  yes
-pyspark  1.0e+07         -          -           -   no
-polars   1.0e+03    0.3343     0.0027        1000  yes
-polars   1.0e+04    0.3376     0.0027       10000  yes
-polars   1.0e+05    0.3312     0.0038      100000  yes
-polars   1.0e+06    0.3506     0.0101     1000000  yes
-polars   1.0e+07    0.4773     0.0523    10000000  yes
-polars   1.0e+08    0.4753     0.0533   100000000  yes
-duckdb   1.0e+03    0.3460     0.0024        1000  yes
-duckdb   1.0e+04    0.3421     0.0026       10000  yes
-duckdb   1.0e+05    0.3846     0.0029      100000  yes
-duckdb   1.0e+06    0.4305     0.0086     1000000  yes
-duckdb   1.0e+07    0.6135     0.0408    10000000  yes
-duckdb   1.0e+08    0.6055     0.0414   100000000  yes
+backend  rows(sci)  operation  source  read_s  compute_s  input_rows   ok  sanity_ok
+-------  ---------  ---------  ------  ------  ---------  ----------  ---  ---------
+pandas   1.0e+03    filter     csv     0.0011     0.0025        1000  yes        yes
+pandas   1.0e+04    filter     csv     0.0020     0.0026       10000  yes        yes
+pandas   1.0e+05    filter     csv     0.0139     0.0030      100000  yes        yes
+pandas   1.0e+06    filter     csv     0.1125     0.0077     1000000  yes        yes
+pandas   1.0e+07    filter     csv     0.7223     0.0425     6416532  yes        yes
+pandas   1.0e+08    filter     csv     0.7428     0.0393     6561303  yes        yes
+dask     1.0e+03    filter     csv     0.0039     0.0081        1000  yes        yes
+dask     1.0e+04    filter     csv     0.0044     0.0091       10000  yes        yes
+dask     1.0e+05    filter     csv     0.0042     0.0216      100000  yes        yes
+dask     1.0e+06    filter     csv     0.0044     0.1293     1000000  yes        yes
+dask     1.0e+07    filter     csv     0.0042     0.3334     6416532  yes        yes
+dask     1.0e+08    filter     csv     0.0044     0.2843     6561303  yes        yes
+pyspark  1.0e+03    filter     csv     3.9374     0.2576        1000  yes        yes
+pyspark  1.0e+04    filter     csv     4.0030     0.2779       10000  yes        yes
+pyspark  1.0e+05    filter     csv     4.0783     0.4507      100000  yes        yes
+pyspark  1.0e+06    filter     csv     4.2380     1.7736     1000000  yes        yes
+pyspark  1.0e+07    filter     csv          -          -           -   no        yes
+polars   1.0e+03    filter     csv     0.3294     0.0027        1000  yes        yes
+polars   1.0e+04    filter     csv     0.3121     0.0027       10000  yes        yes
+polars   1.0e+05    filter     csv     0.3310     0.0037      100000  yes        yes
+polars   1.0e+06    filter     csv     0.3443     0.0088     1000000  yes        yes
+polars   1.0e+07    filter     csv     0.4602     0.0505     6416532  yes        yes
+polars   1.0e+08    filter     csv     0.4506     0.0518     6561303  yes        yes
+duckdb   1.0e+03    filter     csv     0.3226     0.0025        1000  yes        yes
+duckdb   1.0e+04    filter     csv     0.3384     0.0025       10000  yes        yes
+duckdb   1.0e+05    filter     csv     0.3782     0.0029      100000  yes        yes
+duckdb   1.0e+06    filter     csv     0.4192     0.0081     1000000  yes        yes
+duckdb   1.0e+07    filter     csv     0.5786     0.0385     6416532  yes        yes
+duckdb   1.0e+08    filter     csv     0.5889     0.0398     6561303  yes        yes
 ```

@@ -73,6 +73,9 @@ SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 
 Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backends under test
 
+# Operation performed by the challenge for OM runs (could be made CLI-configurable)
+OPERATION = "filter"
+
 # Escalating target sizes we attempt per backend (logical rows intended).
 ORDERS = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
 
@@ -100,6 +103,8 @@ class Entry:
     compute_s: Optional[float]
     ok: bool
     input_rows: Optional[int] = None
+    source: str = "generated"  # "parquet" | "csv" | "generated"
+    operation: str = OPERATION
 
 
 @dataclass
@@ -119,6 +124,9 @@ class StepResult:
     compute_s: Optional[float]
     input_rows: Optional[int]
     ok: bool
+    source: str
+    operation: str
+    sanity_ok: bool
 
 
 def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
@@ -149,6 +157,11 @@ def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
 def _parquet_glob(size: int) -> str:
     """Return the default glob that points to Parquet chunks for a given size."""
     return str(ROOT / f"data/brc_{size}" / "*.parquet")
+def _csv_glob(size: int) -> str:
+    """Return the default glob that points to CSV chunks for a given size."""
+    return str(ROOT / f"data/brc_{size}" / "*.csv")
+
+
 
 
 def _has_matches(glob_path: str) -> bool:
@@ -171,7 +184,16 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
     ok, read_s, compute_s = _run_challenge(cmd, env, budget_s, backend)
     if not ok:
         return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
-    return Entry(backend=backend, rows=rows, read_s=read_s, compute_s=compute_s, ok=True, input_rows=_count_input_rows(rows, None))
+    return Entry(
+        backend=backend,
+        rows=rows,
+        read_s=read_s,
+        compute_s=compute_s,
+        ok=True,
+        input_rows=_count_input_rows(rows, None),
+        source="generated",
+        operation=OPERATION,
+    )
 
 
 def _env_for_backend(backend: str) -> dict:
@@ -183,12 +205,12 @@ def _env_for_backend(backend: str) -> dict:
 
 def _cmd_for_rows(backend: str, rows: int) -> List[str]:
     """Create the challenge command to generate/run one chunk with ``rows``."""
-    return [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", "filter", "--only-backend", backend]
+    return [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", OPERATION, "--only-backend", backend]
 
 
 def _cmd_for_glob(backend: str, glob_path: str) -> List[str]:
     """Create the challenge command to run against existing data at ``glob_path``."""
-    return [PY, str(SCRIPT), "--data-glob", glob_path, "--operation", "filter", "--only-backend", backend]
+    return [PY, str(SCRIPT), "--data-glob", glob_path, "--operation", OPERATION, "--only-backend", backend]
 
 
 def _parse_latest_timings(backend: str) -> tuple[Optional[float], Optional[float]]:
@@ -240,12 +262,12 @@ def _build_row(entry: Entry, size: int) -> List[str]:
     cs = f"{entry.compute_s:.4f}" if entry.compute_s is not None else "-"
     ir = f"{entry.input_rows}" if entry.input_rows is not None else "-"
     ok = "yes" if entry.ok else "no"
-    return [entry.backend, f"{size:.1e}", rs, cs, ir, ok]
+    return [entry.backend, f"{size:.1e}", entry.operation, entry.source, rs, cs, ir, ok]
 
 
 def _default_headers() -> List[str]:
     """Headers for the OM report table (fixed-width formatting)."""
-    return ["backend", "rows(sci)", "read_s", "compute_s", "input_rows", "ok"]
+    return ["backend", "rows(sci)", "operation", "source", "read_s", "compute_s", "input_rows", "ok", "sanity_ok"]
 
 
 def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
@@ -254,8 +276,46 @@ def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
     if _has_matches(pg):
         env = _env_for_backend(backend)
         ok, rs, cs = _run_challenge(_cmd_for_glob(backend, pg), env, budget, backend)
-        return Entry(backend=backend, rows=size, read_s=rs, compute_s=cs, ok=bool(ok), input_rows=_count_input_rows(size, pg) if ok else None)
+        return Entry(
+            backend=backend,
+            rows=size,
+            read_s=rs,
+            compute_s=cs,
+            ok=bool(ok),
+            input_rows=_count_input_rows(size, pg) if ok else None,
+            source="parquet",
+            operation=OPERATION,
+        )
+    cg = _csv_glob(size)
+    if _has_matches(cg):
+        env = _env_for_backend(backend)
+        ok, rs, cs = _run_challenge(_cmd_for_glob(backend, cg), env, budget, backend)
+        return Entry(
+            backend=backend,
+            rows=size,
+            read_s=rs,
+            compute_s=cs,
+            ok=bool(ok),
+            input_rows=_count_input_rows(size, cg) if ok else None,
+            source="csv",
+            operation=OPERATION,
+        )
     return run_once(backend, size, budget)
+
+
+def _sanity_check(entry: Entry) -> bool:
+    """Basic validation to catch obviously wrong measurements."""
+    if entry.ok and (entry.read_s is None or entry.compute_s is None):
+        return False
+    if entry.read_s is not None and entry.read_s < 0:
+        return False
+    if entry.compute_s is not None and entry.compute_s < 0:
+        return False
+    if entry.source in ("parquet", "csv") and entry.ok and (entry.input_rows is None or entry.input_rows <= 0):
+        return False
+    if entry.source == "generated" and entry.input_rows is not None and entry.input_rows != entry.rows:
+        return False
+    return True
 
 
 def collect_measurements(budget: float) -> List[StepResult]:
@@ -268,7 +328,19 @@ def collect_measurements(budget: float) -> List[StepResult]:
     for backend in Backends:
         for size in ORDERS:
             e = _entry_for_backend_size(backend, size, budget)
-            out.append(StepResult(backend, size, e.read_s, e.compute_s, e.input_rows, e.ok))
+            out.append(
+                StepResult(
+                    backend,
+                    size,
+                    e.read_s,
+                    e.compute_s,
+                    e.input_rows,
+                    e.ok,
+                    e.source,
+                    e.operation,
+                    _sanity_check(e),
+                )
+            )
             if not e.ok:
                 break
     return out
@@ -282,7 +354,8 @@ def format_measurements_to_rows(steps: List[StepResult]) -> List[List[str]]:
         cs = f"{s.compute_s:.4f}" if s.compute_s is not None else "-"
         ir = f"{s.input_rows}" if s.input_rows is not None else "-"
         ok = "yes" if s.ok else "no"
-        rows.append([s.backend, f"{s.size:.1e}", rs, cs, ir, ok])
+        sanity = "yes" if s.sanity_ok else "no"
+        rows.append([s.backend, f"{s.size:.1e}", s.operation, s.source, rs, cs, ir, ok, sanity])
     return rows
 
 
@@ -297,7 +370,7 @@ def write_report_rows(rows: List[List[str]]) -> None:
         _here = _Path(__file__).resolve()
         _sys.path.append(str(_here.parents[1]))  # scripts
         from utils import write_fixed_markdown as _write_md  # type: ignore
-        _write_md(OUT, "Billion Row OM Runner", _default_headers(), rows, preface_lines=None, right_align_from=2)
+        _write_md(OUT, "Billion Row OM Runner", _default_headers(), rows, preface_lines=None, right_align_from=4)
     except Exception:
         # Fallback minimal TSV-like output
         lines = ["# Billion Row OM Runner", "", "```text", "\t".join(_default_headers())]
