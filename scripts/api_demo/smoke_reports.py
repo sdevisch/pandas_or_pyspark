@@ -67,7 +67,15 @@ def main() -> int:
     # 4) BRC core (small)
     brc = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
     if brc.exists():
-        run_cmd([PY, str(brc), "--rows-per-chunk", "1000", "--num-chunks", "1", "--operation", "filter"])
+        # Write to a smoke-specific path to avoid overwriting the canonical report
+        run_cmd([
+            PY,
+            str(brc),
+            "--rows-per-chunk", "1000",
+            "--num-chunks", "1",
+            "--operation", "filter",
+            "--md-out", str(reports / "brc" / "billion_row_challenge_smoke.md"),
+        ])
 
     # 5) BRC one-minute (tiny check)
     om1 = ROOT / "scripts" / "brc" / "brc_one_minute_runner.py"
