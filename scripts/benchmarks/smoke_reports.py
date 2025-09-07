@@ -22,6 +22,9 @@ def run_cmd(cmd: list[str], env: dict[str, str] | None = None) -> None:
 
 def main() -> int:
     reports = ROOT / "reports"
+    # Create subfolders: api/, benchmarks/, brc/
+    (reports / "api").mkdir(parents=True, exist_ok=True)
+    (reports / "benchmarks").mkdir(parents=True, exist_ok=True)
     (reports / "brc").mkdir(parents=True, exist_ok=True)
 
     # 1) Bench backends example
@@ -49,18 +52,18 @@ def main() -> int:
             "--groupby",
             "cat",
             "--md-out",
-            str(reports / "bench_smoke.md"),
+            str(reports / "benchmarks" / "bench_smoke.md"),
         ])
 
     # 2) Compatibility matrix
     compat = ROOT / "scripts" / "compat_matrix.py"
     if compat.exists():
-        run_cmd([PY, str(compat), "--md-out", str(reports / "compatibility.md")])
+        run_cmd([PY, str(compat), "--md-out", str(reports / "api" / "compatibility.md")])
 
     # 3) Relational benchmark
     rel = ROOT / "scripts" / "relational_bench.py"
     if rel.exists():
-        run_cmd([PY, str(rel), "--md-out", str(reports / "relational_benchmark.md")])
+        run_cmd([PY, str(rel), "--md-out", str(reports / "benchmarks" / "relational_benchmark.md")])
 
     # 4) BRC core (small)
     brc = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
