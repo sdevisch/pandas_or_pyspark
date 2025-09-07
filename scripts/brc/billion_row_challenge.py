@@ -195,8 +195,8 @@ def parse_arguments():
     args_list = [
         ("--rows-per-chunk", dict(type=int, default=1_000_000)),
         ("--num-chunks", dict(type=int, default=1)),
-        ("--operation", dict(default="filter", choices=["filter", "groupby"])),
-        ("--materialize", dict(default="head", choices=["head", "count", "all"])),
+        ("--operation", dict(default="groupby", choices=["filter", "groupby"])),
+        ("--materialize", dict(default="count", choices=["head", "count", "all"])),
         ("--data-glob", dict(default=None)),
         ("--only-backend", dict(default=None)),
         ("--md-out", dict(default=None)),
@@ -361,12 +361,15 @@ def build_rows(results: List[Result]) -> List[List[str]]:
 
 
 def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str]) -> None:
-    """Write a fixed-width Markdown report including header context and timings."""
+    """Write a fixed-width Markdown report including header context and timings.
+
+    Show all result lines verbatim without truncation.
+    """
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
-    # All results share the same op/materialize for a given run
     op_val = results[0].op if results else "-"
     mat_val = os.environ.get("BRC_MATERIALIZE", "head")
+    rows_text = format_fixed(headers, build_rows(results))
     lines = [
         "# Billion Row Challenge (scaffold)",
         "",
@@ -378,7 +381,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
         "",
         "```text",
-        *format_fixed(headers, build_rows(results)),
+        *rows_text,
         "```",
         "",
     ]
