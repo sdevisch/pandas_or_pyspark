@@ -72,6 +72,25 @@ class Entry:
     read_s: Optional[float]
     compute_s: Optional[float]
     ok: bool
+    input_rows: Optional[int] = None
+
+
+def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
+    if data_glob:
+        import glob as _glob
+        import os as _os
+        import pyarrow.parquet as _pq  # type: ignore
+        count = 0
+        for p in _glob.glob(data_glob):
+            try:
+                count += int(_pq.ParquetFile(p).metadata.num_rows)
+            except Exception:
+                # Fallback: approximate by counting lines minus header for CSV
+                if p.lower().endswith('.csv'):
+                    with open(p, 'r') as f:
+                        count += max(0, sum(1 for _ in f) - 1)
+        return count
+    return rows
 
 
 def run_once(backend: str, rows: int, budget_s: float) -> Entry:
@@ -132,7 +151,7 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
                         except Exception:
                             pass
                     break
-        return Entry(backend=backend, rows=rows, read_s=read_s, compute_s=compute_s, ok=True)
+        return Entry(backend=backend, rows=rows, read_s=read_s, compute_s=compute_s, ok=True, input_rows=_count_input_rows(rows, None))
     except subprocess.TimeoutExpired:
         # Exceeded budget; mark as not ok so we won't escalate further for this backend
         return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
@@ -186,7 +205,7 @@ def main():
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     rows: List[List[str]] = []
-    headers = ["backend", "rows(sci)", "read_s", "compute_s", "ok"]
+    headers = ["backend", "rows(sci)", "read_s", "compute_s", "input_rows", "ok"]
 
     for backend in Backends:
         proceed = True  # As soon as a step fails, we stop escalating for this backend
@@ -236,7 +255,7 @@ def main():
                                     except Exception:
                                         pass
                                 break
-                    entry = Entry(backend=backend, rows=size, read_s=read_s, compute_s=compute_s, ok=True)
+                    entry = Entry(backend=backend, rows=size, read_s=read_s, compute_s=compute_s, ok=True, input_rows=_count_input_rows(size, parquet_glob))
             else:
                 entry = run_once(backend, size, budget)
             rows.append([
@@ -244,6 +263,7 @@ def main():
                 f"{size:.1e}",
                 f"{entry.read_s:.4f}" if entry.read_s is not None else "-",
                 f"{entry.compute_s:.4f}" if entry.compute_s is not None else "-",
+                f"{entry.input_rows}" if entry.input_rows is not None else "-",
                 "yes" if entry.ok else "no",
             ])
             proceed = entry.ok
