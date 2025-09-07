@@ -1,42 +1,43 @@
 # Billion Row OM Runner
 
-Generated at: 2025-09-07 10:06:18
+Generated at: 2025-09-07 10:11:40
 
 ```text
 backend  rows(sci)  operation  source   read_s  compute_s  input_rows   ok  sanity_ok
 -------  ---------  ---------  -------  ------  ---------  ----------  ---  ---------
-pandas   1.0e+02    filter     parquet  0.0521     0.0029         100  yes        yes
-pandas   1.0e+03    filter     parquet  0.0283     0.0028        1000  yes        yes
-pandas   1.0e+04    filter     parquet  0.0262     0.0026       10000  yes        yes
-pandas   1.0e+05    filter     parquet  0.0283     0.0035      100000  yes        yes
-pandas   1.0e+06    filter     parquet  0.0401     0.0087     1000000  yes        yes
-pandas   1.0e+07    filter     parquet  0.1368     0.0644    10000000  yes        yes
-pandas   1.0e+08    filter     parquet       -          -           -   no        yes
-dask     1.0e+02    filter     parquet  0.0082     0.0072         100  yes        yes
-dask     1.0e+03    filter     parquet  0.0038     0.0065        1000  yes        yes
-dask     1.0e+04    filter     parquet  0.0040     0.0071       10000  yes        yes
-dask     1.0e+05    filter     parquet  0.0040     0.0099      100000  yes        yes
-dask     1.0e+06    filter     parquet  0.0043     0.0348     1000000  yes        yes
-dask     1.0e+07    filter     parquet  0.0034     0.2858    10000000  yes        yes
-dask     1.0e+08    filter     parquet  0.0202     1.8669   190000000  yes        yes
-pyspark  1.0e+02    filter     parquet  4.0291     0.8967         100  yes        yes
-pyspark  1.0e+03    filter     parquet  3.1508     0.8730        1000  yes        yes
-pyspark  1.0e+04    filter     parquet  3.1644     0.9087       10000  yes        yes
-pyspark  1.0e+05    filter     parquet  3.1491     1.0099      100000  yes        yes
-pyspark  1.0e+06    filter     parquet  3.1819     3.0228     1000000  yes        yes
-pyspark  1.0e+07    filter     parquet       -          -           -   no        yes
-polars   1.0e+02    filter     parquet  0.3410     0.0023         100  yes        yes
-polars   1.0e+03    filter     parquet  0.2997     0.0024        1000  yes        yes
-polars   1.0e+04    filter     parquet  0.3278     0.0024       10000  yes        yes
-polars   1.0e+05    filter     parquet  0.3350     0.0031      100000  yes        yes
-polars   1.0e+06    filter     parquet  0.3276     0.0079     1000000  yes        yes
-polars   1.0e+07    filter     parquet  0.4349     0.0585    10000000  yes        yes
-polars   1.0e+08    filter     parquet  5.2443     2.5383   190000000  yes        yes
-duckdb   1.0e+02    filter     parquet  0.3620     0.0024         100  yes        yes
-duckdb   1.0e+03    filter     parquet  0.3189     0.0024        1000  yes        yes
-duckdb   1.0e+04    filter     parquet  0.3399     0.0025       10000  yes        yes
-duckdb   1.0e+05    filter     parquet  0.3374     0.0030      100000  yes        yes
-duckdb   1.0e+06    filter     parquet  0.3683     0.0078     1000000  yes        yes
-duckdb   1.0e+07    filter     parquet  0.4829     0.0554    10000000  yes        yes
-duckdb   1.0e+08    filter     parquet  6.3528     2.1895   190000000  yes        yes
+pandas   1.0e+02    groupby    parquet  0.0266     0.0007         100  yes        yes
+pandas   1.0e+03    groupby    parquet  0.0261     0.0008        1000  yes        yes
+pandas   1.0e+04    groupby    parquet  0.0259     0.0009       10000  yes        yes
+pandas   1.0e+05    groupby    parquet  0.0276     0.0027      100000  yes        yes
+pandas   1.0e+06    groupby    parquet  0.0382     0.0203     1000000  yes        yes
+pandas   1.0e+07    groupby    parquet  0.1279     0.1997    10000000  yes        yes
+pandas   1.0e+08    groupby    parquet       -          -           -   no        yes
+dask     1.0e+02    groupby    parquet  0.0039     0.0112         100  yes        yes
+dask     1.0e+03    groupby    parquet  0.0031     0.0114        1000  yes        yes
+dask     1.0e+04    groupby    parquet  0.0033     0.0118       10000  yes        yes
+dask     1.0e+05    groupby    parquet  0.0034     0.0136      100000  yes        yes
+dask     1.0e+06    groupby    parquet  0.0032     0.0384     1000000  yes        yes
+dask     1.0e+07    groupby    parquet  0.0031     0.2818    10000000  yes        yes
+dask     1.0e+08    groupby    parquet  0.0180     1.3273   190000000  yes        yes
+pyspark  1.0e+02    groupby    parquet  4.0166     1.2176         100  yes        yes
+pyspark  1.0e+03    groupby    parquet  3.1819     1.6533        1000  yes        yes
+pyspark  1.0e+04    groupby    parquet  3.3217     1.1566       10000  yes        yes
+pyspark  1.0e+05    groupby    parquet  3.1416     1.1901      100000  yes        yes
+pyspark  1.0e+06    groupby    parquet  3.1696     1.2482     1000000  yes        yes
+pyspark  1.0e+07    groupby    parquet  3.1822     1.4425    10000000  yes        yes
+pyspark  1.0e+08    groupby    parquet       -          -           -   no        yes
+polars   1.0e+02    groupby    parquet  0.3574     0.0008         100  yes        yes
+polars   1.0e+03    groupby    parquet  0.3403     0.0008        1000  yes        yes
+polars   1.0e+04    groupby    parquet  0.3131     0.0009       10000  yes        yes
+polars   1.0e+05    groupby    parquet  0.3207     0.0027      100000  yes        yes
+polars   1.0e+06    groupby    parquet  0.3307     0.0200     1000000  yes        yes
+polars   1.0e+07    groupby    parquet  0.4578     0.1993    10000000  yes        yes
+polars   1.0e+08    groupby    parquet       -          -           -   no        yes
+duckdb   1.0e+02    groupby    parquet  0.3524     0.0008         100  yes        yes
+duckdb   1.0e+03    groupby    parquet  0.3153     0.0011        1000  yes        yes
+duckdb   1.0e+04    groupby    parquet  0.3189     0.0010       10000  yes        yes
+duckdb   1.0e+05    groupby    parquet  0.3337     0.0027      100000  yes        yes
+duckdb   1.0e+06    groupby    parquet  0.3398     0.0204     1000000  yes        yes
+duckdb   1.0e+07    groupby    parquet  0.5117     0.1902    10000000  yes        yes
+duckdb   1.0e+08    groupby    parquet       -          -           -   no        yes
 ```

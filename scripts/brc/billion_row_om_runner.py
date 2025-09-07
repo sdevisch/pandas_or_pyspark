@@ -74,7 +74,7 @@ SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backends under test
 
 # Operation performed by the challenge for OM runs (could be made CLI-configurable)
-OPERATION = "filter"
+OPERATION = "groupby"
 
 # Escalating target sizes we attempt per backend (logical rows intended).
 ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
