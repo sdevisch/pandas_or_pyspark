@@ -29,14 +29,10 @@ Notes
 from __future__ import annotations
 
 import argparse
-import concurrent.futures  # Reserved for potential parallelization (not used yet)
 import os
-import signal  # Not strictly required now; kept for future fine-grained control
 import subprocess
 import sys
-import time
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -72,194 +68,136 @@ class Entry:
     read_s: Optional[float]
     compute_s: Optional[float]
     ok: bool
+    input_rows: Optional[int] = None
+
+
+def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
+    if data_glob:
+        import glob as _glob
+        import os as _os
+        import pyarrow.parquet as _pq  # type: ignore
+        count = 0
+        for p in _glob.glob(data_glob):
+            try:
+                count += int(_pq.ParquetFile(p).metadata.num_rows)
+            except Exception:
+                # Fallback: approximate by counting lines minus header for CSV
+                if p.lower().endswith('.csv'):
+                    with open(p, 'r') as f:
+                        count += max(0, sum(1 for _ in f) - 1)
+        return count
+    return rows
+
+
+def _parquet_glob(size: int) -> str:
+    return str(ROOT / f"data/brc_{size}" / "*.parquet")
 
 
 def run_once(backend: str, rows: int, budget_s: float) -> Entry:
-    """Execute a single step for a given backend and size with a time budget.
+    """Run one (backend, size) step and parse read/compute timings."""
+    env = _env_for_backend(backend)
+    cmd = _cmd_for_rows(backend, rows)
+    ok, read_s, compute_s = _run_challenge(cmd, env, budget_s, backend)
+    if not ok:
+        return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
+    return Entry(backend=backend, rows=rows, read_s=read_s, compute_s=compute_s, ok=True, input_rows=_count_input_rows(rows, None))
 
-    We spawn the underlying BRC scaffold as a subprocess so we can set a
-    wall-clock timeout. The subprocess writes a timing report which we parse.
-    """
 
-    # Prepare environment: select backend via env var consumed by library
+def _env_for_backend(backend: str) -> dict:
     env = os.environ.copy()
     env["UNIPANDAS_BACKEND"] = backend
+    return env
 
-    # Build command line to run one-chunk filter scenario at the given size
-    cmd = [
-        PY,
-        str(SCRIPT),
-        "--rows-per-chunk",
-        str(rows),
-        "--num-chunks",
-        "1",
-        "--operation",
-        "filter",
-        "--only-backend",
-        backend,
-    ]
-    start = time.time()
+
+def _cmd_for_rows(backend: str, rows: int) -> List[str]:
+    return [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", "filter", "--only-backend", backend]
+
+
+def _cmd_for_glob(backend: str, glob_path: str) -> List[str]:
+    return [PY, str(SCRIPT), "--data-glob", glob_path, "--operation", "filter", "--only-backend", backend]
+
+
+def _parse_latest_timings(backend: str) -> tuple[Optional[float], Optional[float]]:
+    p = REPORTS / "billion_row_challenge.md"
+    if not p.exists():
+        return None, None
+    for line in p.read_text().strip().splitlines()[::-1]:
+        if line.startswith(backend):
+            parts = line.split()
+            if len(parts) >= 5:
+                try:
+                    return float(parts[3]), float(parts[4])
+                except Exception:
+                    return None, None
+    return None, None
+
+
+def _run_challenge(cmd: List[str], env: dict, budget_s: float, backend: str) -> tuple[bool, Optional[float], Optional[float]]:
     try:
-        # Run the subprocess with a hard timeout; capture output for diagnostics
-        subprocess.run(
-            cmd,
-            env=env,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=budget_s,
-        )
-        # Parse the latest report file to extract last line timings for this backend
-        report_path = REPORTS / "billion_row_challenge.md"
-        read_s = None
-        compute_s = None
-        if report_path.exists():
-            lines = report_path.read_text().strip().splitlines()
-            # find header values to compute MB/s
-            total_bytes = None
-            for i, line in enumerate(lines[::-1]):
-                if line.startswith("- total_bytes:"):
-                    try:
-                        total_bytes = int(line.split(":", 1)[1].strip())
-                    except Exception:
-                        total_bytes = None
-                if line.startswith(backend):
-                    parts = line.split()
-                    if len(parts) >= 6:
-                        try:
-                            read_s = float(parts[3])
-                            compute_s = float(parts[4])
-                        except Exception:
-                            pass
-                    break
-        return Entry(backend=backend, rows=rows, read_s=read_s, compute_s=compute_s, ok=True)
+        subprocess.run(cmd, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=budget_s)
+        r_s, c_s = _parse_latest_timings(backend)
+        return True, r_s, c_s
     except subprocess.TimeoutExpired:
-        # Exceeded budget; mark as not ok so we won't escalate further for this backend
-        return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
+        return False, None, None
     except Exception:
-        # Any other failure (import problems, run error) is treated as not ok
-        return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
+        return False, None, None
+
+def _build_row(entry: Entry, size: int) -> List[str]:
+    rs = f"{entry.read_s:.4f}" if entry.read_s is not None else "-"
+    cs = f"{entry.compute_s:.4f}" if entry.compute_s is not None else "-"
+    ir = f"{entry.input_rows}" if entry.input_rows is not None else "-"
+    ok = "yes" if entry.ok else "no"
+    return [entry.backend, f"{size:.1e}", rs, cs, ir, ok]
 
 
-def fmt_fixed(headers: List[str], rows: List[List[str]]) -> List[str]:
+def _default_headers() -> List[str]:
+    return ["backend", "rows(sci)", "read_s", "compute_s", "input_rows", "ok"]
+
+
+def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
+    pg = _parquet_glob(size)
+    if __import__("glob").glob(pg):
+        env = _env_for_backend(backend)
+        ok, rs, cs = _run_challenge(_cmd_for_glob(backend, pg), env, budget, backend)
+        return Entry(backend=backend, rows=size, read_s=rs, compute_s=cs, ok=bool(ok), input_rows=_count_input_rows(size, pg) if ok else None)
+    return run_once(backend, size, budget)
+
+
+def _collect_rows(budget: float) -> List[List[str]]:
+    rows: List[List[str]] = []
+    for backend in Backends:
+        for size in ORDERS:
+            entry = _entry_for_backend_size(backend, size, budget)
+            rows.append(_build_row(entry, size))
+            if not entry.ok:
+                break
+    return rows
+
+
+def _write_rows(rows: List[List[str]]) -> None:
     try:
         import sys as _sys
         from pathlib import Path as _Path
-
         _here = _Path(__file__).resolve()
         _sys.path.append(str(_here.parents[1]))  # scripts
-        from utils import format_fixed as utils_format_fixed  # type: ignore
-
-        return utils_format_fixed(headers, rows, right_align_from=2)
+        from utils import write_fixed_markdown as _write_md  # type: ignore
+        _write_md(OUT, "Billion Row OM Runner", _default_headers(), rows, preface_lines=None, right_align_from=2)
     except Exception:
-        widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
-
-        def fmt_row(vals: List[str]) -> str:
-            parts: List[str] = []
-            for i, v in enumerate(vals):
-                if i < 2:
-                    parts.append(v.ljust(widths[i]))
-                else:
-                    parts.append(v.rjust(widths[i]))
-            return "  ".join(parts)
-
-        lines = [fmt_row(headers), "  ".join(("-" * w) for w in widths)]
+        # Fallback minimal TSV-like output
+        lines = ["# Billion Row OM Runner", "", "```text", "\t".join(_default_headers())]
         for r in rows:
-            lines.append(fmt_row(r))
-        return lines
+            lines.append("\t".join(str(x) for x in r))
+        lines.extend(["```", ""])
+        OUT.write_text("\n".join(lines))
+        print("Wrote", OUT)
 
 
 def main():
-    """CLI entrypoint.
-
-    Parses the per-step budget, iterates backends and sizes in order-of-magnitude
-    steps, runs each step with a timeout, and writes a fixed-width Markdown
-    report to `reports/billion_row_om.md`.
-    """
-
-    parser = argparse.ArgumentParser(description="Order-of-magnitude BRC runner with per-step 3-minute cap")
-    parser.add_argument("--budgets", type=float, default=DEFAULT_BUDGET_S, help="Seconds per backend-size step")
-    parser.add_argument("--data-glob-template", default=None, help="Optional template with {size} placeholder for pre-generated data")
+    parser = argparse.ArgumentParser(description="Order-of-magnitude BRC runner with per-step cap")
+    parser.add_argument("--budgets", type=float, default=DEFAULT_BUDGET_S)
     args = parser.parse_args()
-
-    budget = float(args.budgets)
-
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    rows: List[List[str]] = []
-    headers = ["backend", "rows(sci)", "read_s", "compute_s", "ok"]
-
-    for backend in Backends:
-        proceed = True  # As soon as a step fails, we stop escalating for this backend
-        for size in ORDERS:
-            if not proceed:
-                break
-            # If a data glob template is provided, skip sizes with no data
-            entry = None
-            glob_arg = None
-            # Prefer Parquet per-size if present: data/brc_scales/parquet_{size}/*.parquet
-            import glob as _glob
-            parquet_glob = str(ROOT / f"data/brc_{size}" / "*.parquet")
-            if _glob.glob(parquet_glob):
-                # Run challenge using existing Parquet data
-                cmd_env = os.environ.copy()
-                cmd_env["UNIPANDAS_BACKEND"] = backend
-                cmd = [
-                    PY,
-                    str(SCRIPT),
-                    "--data-glob",
-                    parquet_glob,
-                    "--operation",
-                    "filter",
-                    "--only-backend",
-                    backend,
-                ]
-                try:
-                    subprocess.run(cmd, env=cmd_env, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=budget)
-                except subprocess.TimeoutExpired:
-                    entry = Entry(backend=backend, rows=size, read_s=None, compute_s=None, ok=False)
-                except Exception:
-                    entry = Entry(backend=backend, rows=size, read_s=None, compute_s=None, ok=False)
-                else:
-                    # Parse report
-                    report_path = REPORTS / "billion_row_challenge.md"
-                    read_s = None
-                    compute_s = None
-                    if report_path.exists():
-                        lines = report_path.read_text().strip().splitlines()
-                        for line in lines[::-1]:
-                            if line.startswith(backend):
-                                parts = line.split()
-                                if len(parts) >= 6:
-                                    try:
-                                        read_s = float(parts[3])
-                                        compute_s = float(parts[4])
-                                    except Exception:
-                                        pass
-                                break
-                    entry = Entry(backend=backend, rows=size, read_s=read_s, compute_s=compute_s, ok=True)
-            else:
-                entry = run_once(backend, size, budget)
-            rows.append([
-                backend,
-                f"{size:.1e}",
-                f"{entry.read_s:.4f}" if entry.read_s is not None else "-",
-                f"{entry.compute_s:.4f}" if entry.compute_s is not None else "-",
-                "yes" if entry.ok else "no",
-            ])
-            proceed = entry.ok
-
-    content = [
-        "# Billion Row OM Runner",
-        "",
-        f"Generated at: {ts}",
-        "",
-        "```text",
-        *fmt_fixed(headers, rows),
-        "```",
-        "",
-    ]
-    OUT.write_text("\n".join(content))
-    print("Wrote", OUT)
+    rows = _collect_rows(float(args.budgets))
+    _write_rows(rows)
 
 
 if __name__ == "__main__":
