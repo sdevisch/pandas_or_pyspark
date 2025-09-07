@@ -429,11 +429,29 @@ def main():
     os.environ["BRC_MATERIALIZE"] = args.materialize
     chunks = resolve_chunks(args)
     results: List[Result] = []
+    # Build rows for all known backends, including unavailable ones, so the
+    # report always shows a complete matrix of backends with their status.
+    availability = {b: check_available(b) for b in Backends}
     backends_to_run = [args.only_backend] if args.only_backend else Backends
     for backend in backends_to_run:
-        if not check_available(backend):
+        if not availability.get(backend, False):
             continue
         results.append(run_backend(backend, chunks, args.operation))
+    # Insert placeholders for unavailable backends to make them visible.
+    have = {r.backend for r in results}
+    for backend in Backends:
+        if backend not in have:
+            results.append(
+                Result(
+                    backend=backend,
+                    op=args.operation,
+                    read_s=0.0,
+                    compute_s=0.0,
+                    rows=None,
+                    used_cores=None,
+                    version=get_backend_version(backend),
+                )
+            )
     write_report(chunks, results, args.md_out)
     print(f"Ran BRC with operation={args.operation} materialize={args.materialize}")
 
