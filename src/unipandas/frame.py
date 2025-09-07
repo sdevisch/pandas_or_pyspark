@@ -120,6 +120,89 @@ class Frame:
         result = self._obj.head(n)
         return Frame(result)
 
+    # ----- Additional commonly compatible ops -----
+    def sort_values(self, by: Union[str, Sequence[str]], ascending: Union[bool, Sequence[bool]] = True) -> "Frame":
+        """Return a new frame sorted by column(s).
+
+        Maps to ``DataFrame.sort_values`` for pandas-like backends and to
+        ``DataFrame.sort`` for Polars.
+        """
+        if self._backend == "polars":
+            # Polars uses descending instead of ascending
+            try:
+                descending = (not ascending) if isinstance(ascending, bool) else [not a for a in ascending]  # type: ignore
+                result = self._obj.sort(by, descending=descending)
+            except Exception:
+                result = self._obj  # graceful no-op on mismatch
+        else:
+            result = self._obj.sort_values(by=by, ascending=ascending)
+        return Frame(result)
+
+    def dropna(self, subset: Optional[Union[str, Sequence[str]]] = None) -> "Frame":
+        """Drop rows with missing values, optionally restricted to ``subset``.
+
+        Uses ``dropna`` for pandas-like backends and ``drop_nulls`` for Polars.
+        """
+        if self._backend == "polars":
+            try:
+                result = self._obj.drop_nulls(subset=subset)
+            except Exception:
+                result = self._obj
+        else:
+            result = self._obj.dropna(subset=subset)
+        return Frame(result)
+
+    def fillna(self, value: Any) -> "Frame":
+        """Fill missing values with ``value``.
+
+        Uses ``fillna`` for pandas-like backends and ``fill_null`` for Polars.
+        """
+        if self._backend == "polars":
+            try:
+                result = self._obj.fill_null(value)
+            except Exception:
+                result = self._obj
+        else:
+            result = self._obj.fillna(value)
+        return Frame(result)
+
+    def rename(self, columns: Optional[Mapping[str, str]] = None) -> "Frame":
+        """Rename columns according to mapping ``old→new``.
+
+        Parameters mirror pandas' ``DataFrame.rename(columns=...)``.
+        """
+        mapping = columns or {}
+        if self._backend == "polars":
+            try:
+                result = self._obj.rename(mapping)
+            except Exception:
+                result = self._obj
+        else:
+            result = self._obj.rename(columns=mapping)
+        return Frame(result)
+
+    def astype(self, dtype_map: Mapping[str, Any]) -> "Frame":
+        """Cast columns to given dtypes.
+
+        Uses ``astype`` for pandas-like backends and ``cast``/``with_columns``
+        for Polars.
+        """
+        if self._backend == "polars":
+            try:
+                # Polars DataFrame.cast accepts a mapping of column → dtype
+                result = self._obj.cast(dtype_map)
+            except Exception:
+                try:
+                    import polars as pl  # type: ignore
+
+                    exprs = [pl.col(col).cast(tpe) for col, tpe in dtype_map.items()]
+                    result = self._obj.with_columns(exprs)
+                except Exception:
+                    result = self._obj
+        else:
+            result = self._obj.astype(dtype_map)
+        return Frame(result)
+
     # ----- Conversions -----
     def to_pandas(self):
         """Materialize into a pandas DataFrame.

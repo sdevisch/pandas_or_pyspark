@@ -51,12 +51,37 @@ def op_merge(df: Frame) -> Frame:
     return df.merge(df, on="cat")
 
 
+def op_sort_values(df: Frame) -> Frame:
+    return df.sort_values("a")
+
+
+def op_dropna(df: Frame) -> Frame:
+    return df.dropna()
+
+
+def op_fillna(df: Frame) -> Frame:
+    return df.fillna(0)
+
+
+def op_rename(df: Frame) -> Frame:
+    return df.rename({"a": "A"})
+
+
+def op_astype(df: Frame) -> Frame:
+    return df.astype({"a": int})
+
+
 OPS: List[Tuple[str, Callable[[Frame], Frame]]] = [
     ("select", op_select),
     ("query", op_query),
     ("assign", op_assign),
     ("groupby_agg", op_groupby_agg),
     ("merge", op_merge),
+    ("sort_values", op_sort_values),
+    ("dropna", op_dropna),
+    ("fillna", op_fillna),
+    ("rename", op_rename),
+    ("astype", op_astype),
 ]
 
 

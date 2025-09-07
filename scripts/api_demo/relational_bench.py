@@ -25,8 +25,8 @@ except Exception:
     import sys as _sys
     from pathlib import Path as _Path
 
-    # reach scripts/utils.py from benchmarks/
-    _sys.path.append(str(_Path(__file__).resolve().parents[1] / "scripts"))
+    # reach scripts/utils.py from api_demo/
+    _sys.path.append(str(_Path(__file__).resolve().parents[1]))
     from utils import (  # type: ignore
         Backends as ALL_BACKENDS,
         get_backend_version,
@@ -35,7 +35,7 @@ except Exception:
         format_fixed as utils_format_fixed,
     )
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 REPORTS = ROOT / "reports" / "api_demo"
 REPORTS.mkdir(exist_ok=True)
