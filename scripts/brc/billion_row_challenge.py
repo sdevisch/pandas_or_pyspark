@@ -72,8 +72,12 @@ from typing import List, Optional
 import os as _os
 
 from unipandas import configure_backend
-from unipandas.io import read_csv, read_parquet
 from unipandas.frame import Frame
+try:
+    from .brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
+except Exception:
+    # Allow running as a standalone script
+    from brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
 try:
     from .utils import (
         get_backend_version as utils_get_backend_version,
@@ -220,19 +224,6 @@ def resolve_chunks(args) -> List[Path]:
     return ensure_chunks(args.rows_per_chunk, args.num_chunks)
 
 
-def read_frames_for_backend(chunks: List[Path], backend: str) -> List[Frame]:
-    """Read chunk files into backend dataframes and wrap as ``Frame``.
-
-    The IO path supports both Parquet and CSV based on each chunk's file
-    extension.
-    """
-    frames: List[Frame] = []
-    for p in chunks:
-        if p.suffix.lower() == ".parquet":
-            frames.append(read_parquet(str(p)))
-        else:
-            frames.append(read_csv(str(p)))
-    return frames
 
 
 def _detect_source(chunks: List[Path]) -> str:
@@ -261,29 +252,9 @@ def _total_rows_from_parquet(chunks: List[Path]) -> Optional[int]:
     return total if any_parquet else None
 
 
-def concat_frames(frames: List[Frame], backend: str) -> Frame:
-    """Concatenate a list of Frames using backend-native concat semantics."""
-    if backend == "pyspark":
-        import pyspark.pandas as ps  # type: ignore
-        return Frame(ps.concat([f.to_backend() for f in frames]))
-    if backend == "dask":
-        import dask.dataframe as dd  # type: ignore
-        return Frame(dd.concat([f.to_backend() for f in frames]))
-    import pandas as pd  # type: ignore
-    return Frame(pd.concat([f.to_backend() for f in frames]))
 
 
-def measure_read(chunks: List[Path], backend: str) -> tuple[Frame, float, int]:
-    """Measure time to read and concatenate all chunks for a backend.
-
-    Returns the combined Frame, elapsed seconds, and total input bytes.
-    """
-    t0 = time.perf_counter()
-    frames = read_frames_for_backend(chunks, backend)
-    combined = concat_frames(frames, backend)
-    t1 = time.perf_counter()
-    total_bytes = sum((p.stat().st_size for p in chunks if p.exists()), 0)
-    return combined, t1 - t0, total_bytes
+ 
 
 
 def _materialize_count(backend_df) -> int:
