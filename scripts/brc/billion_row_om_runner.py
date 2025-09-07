@@ -108,7 +108,7 @@ Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backen
 OPERATION = "groupby"  # Default operation for OM runs (shared across steps)
 
 # Escalating target sizes we attempt per backend (logical rows intended).
-ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
+ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 
 # Per (backend,size) wall-clock budget in seconds. If a step exceeds this, we
 # stop escalating for that backend.
