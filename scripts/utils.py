@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from typing import Dict, List, Optional
+from pathlib import Path
+from datetime import datetime
 
 
 Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
@@ -109,3 +111,21 @@ def format_fixed(headers: List[str], rows: List[List[str]], right_align_from: in
     for r in rows:
         lines.append(fmt_row(r))
     return lines
+
+
+def write_fixed_markdown(
+    out_path: Path,
+    title: str,
+    headers: List[str],
+    rows: List[List[str]],
+    preface_lines: Optional[List[str]] = None,
+    right_align_from: int = 2,
+) -> None:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines: List[str] = [f"# {title}", "", f"Generated at: {ts}", ""]
+    if preface_lines:
+        lines.extend(preface_lines)
+    lines.extend(["```text", *format_fixed(headers, rows, right_align_from=right_align_from), "```", ""])
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines))
+    print("Wrote", out_path)
