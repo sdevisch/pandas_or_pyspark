@@ -52,6 +52,16 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+try:
+    # Preferred: import via package path when executed from repo root
+    from scripts.utils import write_brc_om_report  # type: ignore
+except Exception:
+    # Fallback: allow direct execution from scripts/brc by amending sys.path
+    import sys as _sys
+    from pathlib import Path as _Path
+    _here = _Path(__file__).resolve()
+    _sys.path.append(str(_here.parents[1]))  # scripts
+    from utils import write_brc_om_report  # type: ignore
 
 # Repository root (two levels up from this file) so paths are stable regardless
 # of the current working directory from which the script is invoked.
@@ -73,8 +83,11 @@ SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 
 Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backends under test
 
+# Operation performed by the challenge for OM runs (could be made CLI-configurable)
+OPERATION = "groupby"
+
 # Escalating target sizes we attempt per backend (logical rows intended).
-ORDERS = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
+ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
 
 # Per (backend,size) wall-clock budget in seconds. If a step exceeds this, we
 # stop escalating for that backend.
@@ -100,6 +113,8 @@ class Entry:
     compute_s: Optional[float]
     ok: bool
     input_rows: Optional[int] = None
+    source: str = "generated"  # "parquet" | "csv" | "generated"
+    operation: str = OPERATION
 
 
 @dataclass
@@ -119,6 +134,9 @@ class StepResult:
     compute_s: Optional[float]
     input_rows: Optional[int]
     ok: bool
+    source: str
+    operation: str
+    sanity_ok: bool
 
 
 def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
@@ -147,8 +165,56 @@ def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
 
 
 def _parquet_glob(size: int) -> str:
-    """Return the default glob that points to Parquet chunks for a given size."""
+    """Return the default glob that points to Parquet chunks for a given size.
+
+    Prefers data/brc_scales/parquet_{size}/ if present, otherwise falls back
+    to data/brc_{size}/*.parquet.
+    """
+    scales_dir = ROOT / "data" / "brc_scales" / f"parquet_{size}"
+    if scales_dir.exists():
+        return str(scales_dir / "*.parquet")
     return str(ROOT / f"data/brc_{size}" / "*.parquet")
+def _csv_glob(size: int) -> str:
+    """Return the default glob that points to CSV chunks for a given size."""
+    return str(ROOT / f"data/brc_{size}" / "*.csv")
+
+
+
+def _size_dir(size: int) -> Path:
+    """Directory for a given logical size."""
+    return ROOT / f"data/brc_{size}"
+
+
+def _convert_csv_to_parquet_in_dir(dir_path: Path) -> None:
+    """Convert all CSV files in ``dir_path`` to Parquet side-by-side.
+
+    Skips files where the corresponding .parquet already exists.
+    """
+    import glob as _glob
+    import pandas as _pd  # type: ignore
+    for c in _glob.glob(str(dir_path / "*.csv")):
+        p_out = Path(c).with_suffix(".parquet")
+        if p_out.exists():
+            continue
+        df = _pd.read_csv(c)
+        df.to_parquet(p_out, index=False)
+
+
+def _ensure_parquet_for_size(size: int) -> None:
+    """Ensure Parquet chunks exist for ``size`` by converting existing CSV.
+
+    To avoid heavy work unintentionally, only convert for sizes up to 1e6.
+    """
+    dir_path = _size_dir(size)
+    if not dir_path.exists():
+        return
+    if any(dir_path.glob("*.parquet")):
+        return
+    if size > 1_000_000:
+        return
+    _convert_csv_to_parquet_in_dir(dir_path)
+
+
 
 
 def _has_matches(glob_path: str) -> bool:
@@ -171,7 +237,16 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
     ok, read_s, compute_s = _run_challenge(cmd, env, budget_s, backend)
     if not ok:
         return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
-    return Entry(backend=backend, rows=rows, read_s=read_s, compute_s=compute_s, ok=True, input_rows=_count_input_rows(rows, None))
+    return Entry(
+        backend=backend,
+        rows=rows,
+        read_s=read_s,
+        compute_s=compute_s,
+        ok=True,
+        input_rows=_count_input_rows(rows, None),
+        source="generated",
+        operation=OPERATION,
+    )
 
 
 def _env_for_backend(backend: str) -> dict:
@@ -183,12 +258,12 @@ def _env_for_backend(backend: str) -> dict:
 
 def _cmd_for_rows(backend: str, rows: int) -> List[str]:
     """Create the challenge command to generate/run one chunk with ``rows``."""
-    return [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", "filter", "--only-backend", backend]
+    return [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", OPERATION, "--only-backend", backend]
 
 
 def _cmd_for_glob(backend: str, glob_path: str) -> List[str]:
     """Create the challenge command to run against existing data at ``glob_path``."""
-    return [PY, str(SCRIPT), "--data-glob", glob_path, "--operation", "filter", "--only-backend", backend]
+    return [PY, str(SCRIPT), "--data-glob", glob_path, "--operation", OPERATION, "--only-backend", backend]
 
 
 def _parse_latest_timings(backend: str) -> tuple[Optional[float], Optional[float]]:
@@ -240,22 +315,59 @@ def _build_row(entry: Entry, size: int) -> List[str]:
     cs = f"{entry.compute_s:.4f}" if entry.compute_s is not None else "-"
     ir = f"{entry.input_rows}" if entry.input_rows is not None else "-"
     ok = "yes" if entry.ok else "no"
-    return [entry.backend, f"{size:.1e}", rs, cs, ir, ok]
+    return [entry.backend, f"{size:.1e}", entry.operation, entry.source, rs, cs, ir, ok]
 
 
-def _default_headers() -> List[str]:
-    """Headers for the OM report table (fixed-width formatting)."""
-    return ["backend", "rows(sci)", "read_s", "compute_s", "input_rows", "ok"]
+## No local header logic; headers are defined in scripts.utils
 
 
 def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
     """Return the measured Entry for (backend, size) under a time budget."""
+    _ensure_parquet_for_size(size)
     pg = _parquet_glob(size)
     if _has_matches(pg):
         env = _env_for_backend(backend)
         ok, rs, cs = _run_challenge(_cmd_for_glob(backend, pg), env, budget, backend)
-        return Entry(backend=backend, rows=size, read_s=rs, compute_s=cs, ok=bool(ok), input_rows=_count_input_rows(size, pg) if ok else None)
+        return Entry(
+            backend=backend,
+            rows=size,
+            read_s=rs,
+            compute_s=cs,
+            ok=bool(ok),
+            input_rows=_count_input_rows(size, pg) if ok else None,
+            source="parquet",
+            operation=OPERATION,
+        )
+    cg = _csv_glob(size)
+    if _has_matches(cg):
+        env = _env_for_backend(backend)
+        ok, rs, cs = _run_challenge(_cmd_for_glob(backend, cg), env, budget, backend)
+        return Entry(
+            backend=backend,
+            rows=size,
+            read_s=rs,
+            compute_s=cs,
+            ok=bool(ok),
+            input_rows=_count_input_rows(size, cg) if ok else None,
+            source="csv",
+            operation=OPERATION,
+        )
     return run_once(backend, size, budget)
+
+
+def _sanity_check(entry: Entry) -> bool:
+    """Basic validation to catch obviously wrong measurements."""
+    if entry.ok and (entry.read_s is None or entry.compute_s is None):
+        return False
+    if entry.read_s is not None and entry.read_s < 0:
+        return False
+    if entry.compute_s is not None and entry.compute_s < 0:
+        return False
+    if entry.source in ("parquet", "csv") and entry.ok and (entry.input_rows is None or entry.input_rows <= 0):
+        return False
+    if entry.source == "generated" and entry.input_rows is not None and entry.input_rows != entry.rows:
+        return False
+    return True
 
 
 def collect_measurements(budget: float) -> List[StepResult]:
@@ -268,7 +380,19 @@ def collect_measurements(budget: float) -> List[StepResult]:
     for backend in Backends:
         for size in ORDERS:
             e = _entry_for_backend_size(backend, size, budget)
-            out.append(StepResult(backend, size, e.read_s, e.compute_s, e.input_rows, e.ok))
+            out.append(
+                StepResult(
+                    backend,
+                    size,
+                    e.read_s,
+                    e.compute_s,
+                    e.input_rows,
+                    e.ok,
+                    e.source,
+                    e.operation,
+                    _sanity_check(e),
+                )
+            )
             if not e.ok:
                 break
     return out
@@ -282,30 +406,14 @@ def format_measurements_to_rows(steps: List[StepResult]) -> List[List[str]]:
         cs = f"{s.compute_s:.4f}" if s.compute_s is not None else "-"
         ir = f"{s.input_rows}" if s.input_rows is not None else "-"
         ok = "yes" if s.ok else "no"
-        rows.append([s.backend, f"{s.size:.1e}", rs, cs, ir, ok])
+        sanity = "yes" if s.sanity_ok else "no"
+        rows.append([s.backend, f"{s.size:.1e}", s.operation, s.source, rs, cs, ir, ok, sanity])
     return rows
 
 
 def write_report_rows(rows: List[List[str]]) -> None:
-    """Write the OM report (fixed-width Markdown) using shared utilities.
-
-    Falls back to a simple TSV-like fenced block if utilities are unavailable.
-    """
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _here = _Path(__file__).resolve()
-        _sys.path.append(str(_here.parents[1]))  # scripts
-        from utils import write_fixed_markdown as _write_md  # type: ignore
-        _write_md(OUT, "Billion Row OM Runner", _default_headers(), rows, preface_lines=None, right_align_from=2)
-    except Exception:
-        # Fallback minimal TSV-like output
-        lines = ["# Billion Row OM Runner", "", "```text", "\t".join(_default_headers())]
-        for r in rows:
-            lines.append("\t".join(str(x) for x in r))
-        lines.extend(["```", ""])
-        OUT.write_text("\n".join(lines))
-        print("Wrote", OUT)
+    """Write the OM report using the central utilities."""
+    write_brc_om_report(OUT, rows)
 
 
 def main():
