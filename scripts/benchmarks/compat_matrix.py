@@ -13,7 +13,7 @@ from unipandas.frame import Frame
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-REPORTS = ROOT / "reports"
+REPORTS = ROOT / "reports" / "api"
 REPORTS.mkdir(exist_ok=True)
 OUT = REPORTS / "compatibility.md"
 
