@@ -77,7 +77,7 @@ Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backen
 OPERATION = "filter"
 
 # Escalating target sizes we attempt per backend (logical rows intended).
-ORDERS = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
+ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
 
 # Per (backend,size) wall-clock budget in seconds. If a step exceeds this, we
 # stop escalating for that backend.
@@ -160,6 +160,42 @@ def _parquet_glob(size: int) -> str:
 def _csv_glob(size: int) -> str:
     """Return the default glob that points to CSV chunks for a given size."""
     return str(ROOT / f"data/brc_{size}" / "*.csv")
+
+
+
+def _size_dir(size: int) -> Path:
+    """Directory for a given logical size."""
+    return ROOT / f"data/brc_{size}"
+
+
+def _convert_csv_to_parquet_in_dir(dir_path: Path) -> None:
+    """Convert all CSV files in ``dir_path`` to Parquet side-by-side.
+
+    Skips files where the corresponding .parquet already exists.
+    """
+    import glob as _glob
+    import pandas as _pd  # type: ignore
+    for c in _glob.glob(str(dir_path / "*.csv")):
+        p_out = Path(c).with_suffix(".parquet")
+        if p_out.exists():
+            continue
+        df = _pd.read_csv(c)
+        df.to_parquet(p_out, index=False)
+
+
+def _ensure_parquet_for_size(size: int) -> None:
+    """Ensure Parquet chunks exist for ``size`` by converting existing CSV.
+
+    To avoid heavy work unintentionally, only convert for sizes up to 1e6.
+    """
+    dir_path = _size_dir(size)
+    if not dir_path.exists():
+        return
+    if any(dir_path.glob("*.parquet")):
+        return
+    if size > 1_000_000:
+        return
+    _convert_csv_to_parquet_in_dir(dir_path)
 
 
 
@@ -272,6 +308,7 @@ def _default_headers() -> List[str]:
 
 def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
     """Return the measured Entry for (backend, size) under a time budget."""
+    _ensure_parquet_for_size(size)
     pg = _parquet_glob(size)
     if _has_matches(pg):
         env = _env_for_backend(backend)
