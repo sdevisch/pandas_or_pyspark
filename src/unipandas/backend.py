@@ -74,26 +74,28 @@ def _is_running_inside_spark() -> bool:
         return False
 
 
-def _detect_backend_heuristic() -> str:
-    # 1) Respect explicit environment configuration
-    env_backend = _detect_backend_by_environment()
-    if env_backend:
-        return env_backend
+def _env_pref_backend() -> Optional[str]:
+    value = _detect_backend_by_environment()
+    return value
 
-    # 2) If we are inside an active Spark session and pandas API is available, use pyspark
+
+def _spark_active_pref() -> Optional[str]:
     if _is_running_inside_spark() and _import_optional("pyspark.pandas") is not None:
         return "pyspark"
+    return None
 
-    # 3) If dask is available and the user indicates preference via DASK_* context, choose dask
-    # This is a soft heuristic and may be adjusted as needed.
+
+def _dask_context_pref() -> Optional[str]:
     if _import_optional("dask.dataframe") is not None and (
         os.getenv("DASK_SCHEDULER_ADDRESS")
         or os.getenv("DASK_DISTRIBUTED__SCHEDULER")
         or os.getenv("DASK_CONFIG")
     ):
         return "dask"
+    return None
 
-    # 4) If only one of dask/pyspark/polars/duckdb is installed, prefer those for scalability
+
+def _single_available_pref() -> Optional[str]:
     if _import_optional("pyspark.pandas") is not None:
         return "pyspark"
     if _import_optional("dask.dataframe") is not None:
@@ -102,6 +104,29 @@ def _detect_backend_heuristic() -> str:
         return "polars"
     if _import_optional("duckdb") is not None:
         return "duckdb"
+    return None
+
+
+def _detect_backend_heuristic() -> str:
+    # 1) Respect explicit environment configuration
+    env_backend = _env_pref_backend()
+    if env_backend:
+        return env_backend
+
+    # 2) Prefer Spark if active
+    spark_pref = _spark_active_pref()
+    if spark_pref:
+        return spark_pref
+
+    # 3) Prefer Dask when context variables indicate a Dask environment
+    dask_pref = _dask_context_pref()
+    if dask_pref:
+        return dask_pref
+
+    # 4) If one scalable engine is available, pick it
+    single_pref = _single_available_pref()
+    if single_pref:
+        return single_pref
 
     # 5) Fallback to pandas
     return "pandas"

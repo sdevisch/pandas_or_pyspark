@@ -1,6 +1,12 @@
 unipandas
 =========
 
+This repository serves three purposes:
+
+1. Demonstrate which pandas syntax different backends share, and where they differ (with workarounds).
+2. Run basic, reproducible benchmarks across backends.
+3. Run a Billion Row Challenge (BRC) with safe scaffolding and an order-of-magnitude runner.
+
 Unified pandas-like API that runs with these backends:
 - pandas (default)
 - Dask DataFrame
@@ -69,25 +75,24 @@ Run the same workload across available backends and compare timings:
 python scripts/bench_backends.py path/to/data.csv --assign --query "a > 0" --groupby a
 ```
 
-Project map
------------
+Repository structure
+--------------------
 
-- Core library
+- Core library (put importable, reusable code here)
   - `src/unipandas/backend.py`: backend detection/configuration (env var and API)
   - `src/unipandas/frame.py`: thin `Frame` wrapper exposing a unified subset (select, query, assign, groupby/agg, merge, head, to_pandas)
   - `src/unipandas/io.py`: IO helpers (`read_csv`, `read_parquet`) returning `Frame`
 
-- Scripts (runnable tools)
-  - `run_benchmark`: orchestrates multiple scenarios and aggregates Markdown under `reports/`
-  - `scripts/bench_backends.py`: times the same workload across pandas, Dask, and pandas-on-Spark; writes Markdown via `--md-out`
-  - `scripts/relational_bench.py`: larger datasets; join and concat timings per backend; writes `reports/relational_benchmark.md`
-  - `scripts/compat_matrix.py`: generates a compatibility matrix showing which operations work across backends; writes `reports/compatibility.md`
-  - BRC (Billion Row Challenge) scripts live under `scripts/brc/` and write to `reports/brc/`
-    - `billion_row_challenge.py`: scalable scaffold for a BRC-style run (chunked Parquet/CSV, filter/groupby)
-    - `billion_row_om_runner.py`: order-of-magnitude runner up to 100M rows with per-step timeout
-    - `brc_generate_data.py`: generate chunked Parquet/CSV
-    - `brc_generate_all_scales.py`: generate 1M/10M/100M/1B datasets with chunking
-    - `brc_scale_runner.py`, `brc_one_minute_runner.py`: scale and 1-minute runners
+- Scripts (CLI tools, demos and runners)
+  - Compatibility and benches
+    - `scripts/bench_backends.py`: time the same workload across pandas, Dask, pandas-on-Spark; writes Markdown via `--md-out`
+    - `scripts/relational_bench.py`: join/concat timings; writes `reports/relational_benchmark.md`
+    - `scripts/compat_matrix.py`: generate a compatibility matrix; writes `reports/compatibility.md`
+  - Billion Row Challenge (under `scripts/brc/`, outputs in `reports/brc/`)
+    - `billion_row_challenge.py`: scalable scaffold (chunked Parquet/CSV, filter/groupby, materialization modes)
+    - `billion_row_om_runner.py`: order-of-magnitude runner with per-step timeout
+    - `brc_generate_data.py`, `brc_generate_all_scales.py`: data generation utilities
+    - `brc_scale_runner.py`, `brc_one_minute_runner.py`: convenience runners
 
 - Reports (generated)
   - `reports/benchmark.md`: aggregated results from `run_benchmark`
@@ -97,8 +102,8 @@ Project map
   - `reports/billion_row_challenge.md`: BRC scaffold output
   - `reports/billion_row_om.md`: order-of-magnitude BRC results
 
-How to run quickly
-------------------
+Quick start
+-----------
 
 1) Ensure a Python env with desired backends (see Install). For Spark:
    `export PYARROW_IGNORE_TIMEZONE=1`
@@ -108,10 +113,10 @@ How to run quickly
    `python scripts/relational_bench.py`
 4) Compatibility matrix:
    `python scripts/compat_matrix.py`
-5) Billion row challenge scaffold (safe defaults):
-   `python scripts/billion_row_challenge.py --rows-per-chunk 100000 --num-chunks 2 --operation filter`
-6) Order-of-magnitude runner:
-   `python scripts/billion_row_om_runner.py --budgets 180`
+5) Billion row challenge scaffold (groupby + count):
+   `python scripts/brc/billion_row_challenge.py --operation groupby --materialize count`
+6) Order-of-magnitude runner (per-step budget):
+   `python scripts/brc/billion_row_om_runner.py --budgets 180`
 
 License
 -------
