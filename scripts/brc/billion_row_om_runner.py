@@ -52,6 +52,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+# Centralized report writing utility (importable both from repo root and tests)
 try:
     # Preferred: import via package path when executed from repo root
     from scripts.utils import write_brc_om_report  # type: ignore
@@ -62,6 +64,25 @@ except Exception:
     _here = _Path(__file__).resolve()
     _sys.path.append(str(_here.parents[1]))  # scripts
     from utils import write_brc_om_report  # type: ignore
+
+# Import challenge helpers for in-process execution (with path-safe fallback)
+try:
+    from scripts.brc.billion_row_challenge import (  # type: ignore
+        measure_read as _challenge_measure_read,
+        run_operation as _challenge_run_operation,
+    )
+except Exception:
+    try:
+        import sys as __sys
+        from pathlib import Path as __Path
+        __here = __Path(__file__).resolve()
+        __sys.path.append(str(__here.parents[0]))  # scripts/brc
+        __sys.path.append(str(__here.parents[1]))  # scripts
+        from billion_row_challenge import measure_read as _challenge_measure_read  # type: ignore
+        from billion_row_challenge import run_operation as _challenge_run_operation  # type: ignore
+    except Exception:
+        _challenge_measure_read = None  # type: ignore
+        _challenge_run_operation = None  # type: ignore
 
 # Repository root (two levels up from this file) so paths are stable regardless
 # of the current working directory from which the script is invoked.
@@ -79,19 +100,23 @@ PY = sys.executable or "python3"  # Use current interpreter; fallback to python3
 
 # We delegate real work to the single-source-of-truth challenge script and only
 # orchestrate/measure here to avoid duplicate logic.
-SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
+SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"  # Single source of truth for ops/IO
 
 Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backends under test
 
 # Operation performed by the challenge for OM runs (could be made CLI-configurable)
-OPERATION = "groupby"
+OPERATION = "groupby"  # Default operation for OM runs (shared across steps)
 
 # Escalating target sizes we attempt per backend (logical rows intended).
-ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
+ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 
 # Per (backend,size) wall-clock budget in seconds. If a step exceeds this, we
 # stop escalating for that backend.
-DEFAULT_BUDGET_S = 180.0
+DEFAULT_BUDGET_S = 180.0  # Per-step wall clock cap (seconds)
+
+# ---------------------------------------------------------------------------
+# Data classes (immutable records passed between steps and reporting)
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -140,12 +165,12 @@ class StepResult:
 
 
 def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
-    """Determine the number of input rows used for a step.
+    """Return verified input rows for a step without triggering compute.
 
-    If ``data_glob`` is provided, we try to read exact row counts from Parquet
-    file metadata. If the files are CSV, we fall back to counting lines and
-    subtracting the header. When no glob is provided, we return the nominal
-    ``rows`` size as a proxy. This function forces no compute in backends.
+    - If ``data_glob`` is provided and points at Parquet, read footer metadata
+      for exact row counts.
+    - If the files are CSV, approximate by counting lines minus header.
+    - If no glob is provided, return the intended ``rows`` as a proxy.
     """
     if data_glob:
         import glob as _glob
@@ -163,33 +188,34 @@ def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
         return count
     return rows
 
+# ---------------------------------------------------------------------------
+# Filesystem and glob helpers (where data lives and how to find it)
+# ---------------------------------------------------------------------------
+
 
 def _parquet_glob(size: int) -> str:
-    """Return the default glob that points to Parquet chunks for a given size.
+    """Return a glob for Parquet chunks at ``size``.
 
-    Prefers data/brc_scales/parquet_{size}/ if present, otherwise falls back
-    to data/brc_{size}/*.parquet.
+    Prefer ``data/brc_scales/parquet_{size}`` if present (pre-generated scales)
+    otherwise fall back to ``data/brc_{size}/*.parquet``.
     """
     scales_dir = ROOT / "data" / "brc_scales" / f"parquet_{size}"
     if scales_dir.exists():
         return str(scales_dir / "*.parquet")
     return str(ROOT / f"data/brc_{size}" / "*.parquet")
 def _csv_glob(size: int) -> str:
-    """Return the default glob that points to CSV chunks for a given size."""
+    """Return a glob for CSV chunks at ``size`` (generated on demand)."""
     return str(ROOT / f"data/brc_{size}" / "*.csv")
 
 
 
 def _size_dir(size: int) -> Path:
-    """Directory for a given logical size."""
+    """Directory that holds generated data for ``size``."""
     return ROOT / f"data/brc_{size}"
 
 
 def _convert_csv_to_parquet_in_dir(dir_path: Path) -> None:
-    """Convert all CSV files in ``dir_path`` to Parquet side-by-side.
-
-    Skips files where the corresponding .parquet already exists.
-    """
+    """Create sibling Parquet files next to each CSV (idempotent)."""
     import glob as _glob
     import pandas as _pd  # type: ignore
     for c in _glob.glob(str(dir_path / "*.csv")):
@@ -201,9 +227,9 @@ def _convert_csv_to_parquet_in_dir(dir_path: Path) -> None:
 
 
 def _ensure_parquet_for_size(size: int) -> None:
-    """Ensure Parquet chunks exist for ``size`` by converting existing CSV.
+    """Ensure Parquet exists for ``size`` by converting CSV when cheap enough.
 
-    To avoid heavy work unintentionally, only convert for sizes up to 1e6.
+    We avoid heavy work for very large sizes by capping conversion at 1e6.
     """
     dir_path = _size_dir(size)
     if not dir_path.exists():
@@ -218,19 +244,16 @@ def _ensure_parquet_for_size(size: int) -> None:
 
 
 def _has_matches(glob_path: str) -> bool:
-    """Return True if the filesystem glob has any matches.
-
-    We encapsulate this to avoid non-obvious usage of __import__("glob").
-    """
+    """Return True if the filesystem ``glob_path`` has any matches."""
     import glob as _glob
     return bool(_glob.glob(glob_path))
 
 
 def run_once(backend: str, rows: int, budget_s: float) -> Entry:
-    """Run one (backend, size) step and parse read/compute timings.
+    """Execute a single (backend, rows) step through the challenge script.
 
-    This delegates to the challenge script with a hard timeout, then parses the
-    resulting report for the last (read_s, compute_s) values for ``backend``.
+    We delegate to the canonical script, enforcing a timeout and parsing the
+    resulting report for read/compute timings.
     """
     env = _env_for_backend(backend)
     cmd = _cmd_for_rows(backend, rows)
@@ -250,27 +273,26 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
 
 
 def _env_for_backend(backend: str) -> dict:
-    """Build a subprocess environment that pins the backend to ``backend``."""
+    """Build environment for the child process with backend selection."""
     env = os.environ.copy()
-    env["UNIPANDAS_BACKEND"] = backend
+    env["UNIPANDAS_BACKEND"] = backend  # Honored by unipandas.configure_backend
     return env
 
 
 def _cmd_for_rows(backend: str, rows: int) -> List[str]:
-    """Create the challenge command to generate/run one chunk with ``rows``."""
+    """Command to generate and run one CSV chunk with ``rows``."""
     return [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", OPERATION, "--only-backend", backend]
 
 
 def _cmd_for_glob(backend: str, glob_path: str) -> List[str]:
-    """Create the challenge command to run against existing data at ``glob_path``."""
+    """Command to run the challenge against existing data at ``glob_path``."""
     return [PY, str(SCRIPT), "--data-glob", glob_path, "--operation", OPERATION, "--only-backend", backend]
 
 
 def _parse_latest_timings(backend: str) -> tuple[Optional[float], Optional[float]]:
-    """Parse the most recent (read_s, compute_s) for ``backend`` from report.
+    """Return (read_s, compute_s) for the most recent run of ``backend``.
 
-    We scan bottom-up to find the last line that starts with ``backend`` and
-    read the timing columns. Returns (None, None) if not found.
+    We scan the challenge report bottom-up to find the latest matching line.
     """
     p = REPORTS / "billion_row_challenge.md"
     if not p.exists():
@@ -287,10 +309,9 @@ def _parse_latest_timings(backend: str) -> tuple[Optional[float], Optional[float
 
 
 def _run_challenge(cmd: List[str], env: dict, budget_s: float, backend: str) -> tuple[bool, Optional[float], Optional[float]]:
-    """Execute the challenge subprocess and return (ok, read_s, compute_s).
+    """Execute the child process and parse timings from its report output.
 
-    Timing occurs in the child process; we parse the challenge report to
-    extract numbers. Keeping all measurement in one place helps avoid drift.
+    Measurement occurs in the child for a single source of truth.
     """
     try:
         # Run with hard wall-clock cap; capture output for debugging if needed
@@ -302,32 +323,64 @@ def _run_challenge(cmd: List[str], env: dict, budget_s: float, backend: str) -> 
             stderr=subprocess.STDOUT,
             timeout=budget_s,
         )
-        r_s, c_s = _parse_latest_timings(backend)
+        r_s, c_s = _parse_latest_timings(backend)  # Pull timings from report
         return True, r_s, c_s
     except subprocess.TimeoutExpired:
         return False, None, None
     except Exception:
         return False, None, None
 
-def _build_row(entry: Entry, size: int) -> List[str]:
-    """Format a single table row from an Entry and logical ``size`` value."""
-    rs = f"{entry.read_s:.4f}" if entry.read_s is not None else "-"
-    cs = f"{entry.compute_s:.4f}" if entry.compute_s is not None else "-"
-    ir = f"{entry.input_rows}" if entry.input_rows is not None else "-"
-    ok = "yes" if entry.ok else "no"
-    return [entry.backend, f"{size:.1e}", entry.operation, entry.source, rs, cs, ir, ok]
+
+def _run_inproc_for_glob(backend: str, glob_path: str, budget_s: float) -> tuple[bool, Optional[float], Optional[float]]:
+    """Run the challenge in-process for existing data matched by ``glob_path``.
+
+    Falls back to subprocess if challenge helpers are unavailable or for
+    backends that require isolated processes (e.g., pyspark).
+    """
+    # Prefer subprocess for pyspark to avoid session conflicts
+    if backend == "pyspark":
+        env = _env_for_backend(backend)
+        return _run_challenge(_cmd_for_glob(backend, glob_path), env, budget_s, backend)
+    if _challenge_measure_read is None or _challenge_run_operation is None:
+        env = _env_for_backend(backend)
+        return _run_challenge(_cmd_for_glob(backend, glob_path), env, budget_s, backend)
+    try:
+        # Configure backend in-process
+        from unipandas import configure_backend as _configure
+        _configure(backend)
+
+        # Expand glob to Paths
+        import glob as _glob
+        chunk_paths = [Path(p) for p in _glob.glob(glob_path)]
+        if not chunk_paths:
+            return False, None, None
+
+        # Measure read/concat and then run operation
+        from time import perf_counter as _now
+        combined, read_s, _total_bytes = _challenge_measure_read(chunk_paths, backend)  # type: ignore
+        t0 = _now()
+        rows_observed, compute_s = _challenge_run_operation(combined, OPERATION, os.environ.get("BRC_MATERIALIZE", "head"))  # type: ignore
+        _ = rows_observed  # unused here; OM captures input_rows separately
+        elapsed = read_s + compute_s if (read_s is not None and compute_s is not None) else (compute_s or 0.0)
+        if elapsed > budget_s:
+            return False, None, None
+        return True, float(read_s), float(compute_s)
+    except Exception:
+        return False, None, None
+
+# NOTE: _build_row is obsolete in favor of StepResult -> rows formatting
 
 
 ## No local header logic; headers are defined in scripts.utils
 
 
 def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
-    """Return the measured Entry for (backend, size) under a time budget."""
-    _ensure_parquet_for_size(size)
+    """Measure one (backend, size) step under a time budget and return Entry."""
+    _ensure_parquet_for_size(size)  # Opportunistically make Parquet available
     pg = _parquet_glob(size)
     if _has_matches(pg):
-        env = _env_for_backend(backend)
-        ok, rs, cs = _run_challenge(_cmd_for_glob(backend, pg), env, budget, backend)
+        # Prefer in-process for non-Spark backends when possible
+        ok, rs, cs = _run_inproc_for_glob(backend, pg, budget)
         return Entry(
             backend=backend,
             rows=size,
@@ -338,7 +391,7 @@ def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
             source="parquet",
             operation=OPERATION,
         )
-    cg = _csv_glob(size)
+    cg = _csv_glob(size)  # Fallback to generated CSV when Parquet not present
     if _has_matches(cg):
         env = _env_for_backend(backend)
         ok, rs, cs = _run_challenge(_cmd_for_glob(backend, cg), env, budget, backend)
@@ -356,7 +409,7 @@ def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
 
 
 def _sanity_check(entry: Entry) -> bool:
-    """Basic validation to catch obviously wrong measurements."""
+    """Basic invariants to catch obviously wrong measurements."""
     if entry.ok and (entry.read_s is None or entry.compute_s is None):
         return False
     if entry.read_s is not None and entry.read_s < 0:
@@ -371,14 +424,13 @@ def _sanity_check(entry: Entry) -> bool:
 
 
 def collect_measurements(budget: float) -> List[StepResult]:
-    """Measure (read_s, compute_s) for each backend at increasing sizes.
+    """Measure timings for each backend across escalating sizes within budget.
 
-    Respects the per-step time budget and stops escalation for a backend once a
-    step fails. Returns a flat list of StepResult objects.
+    We stop escalating for a backend as soon as one step fails.
     """
     out: List[StepResult] = []
-    for backend in Backends:
-        for size in ORDERS:
+    for backend in Backends:  # Iterate logical engines
+        for size in ORDERS:   # Iterate escalating target sizes
             e = _entry_for_backend_size(backend, size, budget)
             out.append(
                 StepResult(
@@ -393,16 +445,16 @@ def collect_measurements(budget: float) -> List[StepResult]:
                     _sanity_check(e),
                 )
             )
-            if not e.ok:
+            if not e.ok:  # Stop escalating once a step times out/fails
                 break
     return out
 
 
 def format_measurements_to_rows(steps: List[StepResult]) -> List[List[str]]:
-    """Convert StepResult measurements into string rows for reporting."""
+    """Convert StepResult records into printable strings for reporting."""
     rows: List[List[str]] = []
     for s in steps:
-        rs = f"{s.read_s:.4f}" if s.read_s is not None else "-"
+        rs = f"{s.read_s:.4f}" if s.read_s is not None else "-"  # right-aligned
         cs = f"{s.compute_s:.4f}" if s.compute_s is not None else "-"
         ir = f"{s.input_rows}" if s.input_rows is not None else "-"
         ok = "yes" if s.ok else "no"
@@ -417,17 +469,15 @@ def write_report_rows(rows: List[List[str]]) -> None:
 
 
 def main():
-    """Run the OM runner and write a Markdown report.
-
-    Steps:
-    1) Parse the per-step time budget from CLI flags
-    2) Measure performance per backend across escalating sizes (time boxed)
-    3) Format measurements into fixed-width table rows for Markdown
-    4) Write the report via shared utilities (with a safe fallback)
-    """
+    """Run OM flow end-to-end: parse args → measure → format → write report."""
     # 1) Parse CLI arguments (kept minimal for readability)
     parser = argparse.ArgumentParser(description="Order-of-magnitude BRC runner with per-step cap")
-    parser.add_argument("--budgets", type=float, default=DEFAULT_BUDGET_S)
+    parser.add_argument(
+        "--budgets",
+        type=float,
+        default=DEFAULT_BUDGET_S,
+        help="Per-step wall-clock budget in seconds (default: 180s ≈ 3 minutes)",
+    )
     args = parser.parse_args()
 
     # 2) Collect timing measurements within the specified budget
