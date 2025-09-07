@@ -292,7 +292,6 @@ def _materialize_count(backend_df) -> int:
     try:
         import duckdb as _duck  # type: ignore
         if hasattr(backend_df, "to_df"):
-            # relation: COUNT(*) into pandas scalar
             con = _duck.connect()
             try:
                 rel = backend_df
@@ -301,7 +300,6 @@ def _materialize_count(backend_df) -> int:
                 con.close()
     except Exception:
         pass
-    # Fallback
     try:
         return int(len(backend_df))
     except Exception:
