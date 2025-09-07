@@ -95,8 +95,8 @@ Repository structure
     - `brc_scale_runner.py`, `brc_one_minute_runner.py`: convenience runners
 
 - Reports (generated)
-  - `reports/api_demo/benchmark.md`: aggregated results from `run_benchmark`
-  - `reports/api_demo/api_demo_s1.md`, `reports/api_demo/api_demo_s2.md`: per-scenario outputs
+  - `reports/api_demo/demo_api_3_min.md`: aggregated results from `demo_api_3_min`
+  - `reports/api_demo/api_demo_smoke.md`: smoke run summary
   - `reports/api_demo/compatibility.md`: fixed-width compatibility table
   - `reports/api_demo/relational_api_demo.md`: join/concat demo timings
   - `reports/billion_row_challenge.md`: BRC scaffold output
