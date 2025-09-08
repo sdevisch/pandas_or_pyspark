@@ -1,6 +1,6 @@
 # unipandas API demos
 
-Generated at: 2025-09-08 16:21:19
+Generated at: 2025-09-08 16:45:17
 
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
 - CPU cores: 11
@@ -12,8 +12,8 @@ Generated at: 2025-09-08 16:21:19
 
 ## Run context
 
-- Data file: `/Users/sdevisch/repos/pandas_or_pyspark/data/smoke.csv`
-- Ran at: 2025-09-08 16:21:25
+- Data file: `/Users/sdevisch/repos/pandas_or_pyspark_fresh/data/smoke.csv`
+- Ran at: 2025-09-08 16:45:24
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
 - System available cores: 11
 - Args: assign=True, query='a > 0', groupby='cat'
@@ -33,13 +33,13 @@ Generated at: 2025-09-08 16:21:19
 ```text
 backend  version   load_s  compute_s  input_rows  used_cores
 -------  --------  ------  ---------  ----------  ----------
-pandas   2.2.2     0.0025     0.0000           3           1
-dask     2024.5.1  0.0077     0.0211           3          11
-pyspark  3.5.1     4.2984     0.7665           3          11
-polars   1.33.0    0.0149     0.0000           3          11
-duckdb   1.3.2     0.0467     0.0000           3          11
+pandas   2.2.2     0.0008     0.0000           3           1
+dask     2024.5.1  0.0051     0.0202           3          11
+pyspark  3.5.1     4.4172     0.7466           3          11
+polars   1.33.0    0.0139     0.0000           3          11
+duckdb   1.3.2     0.0466     0.0000           3          11
 ```
-- Completed bench_backends at 16:21:25
+- Completed bench_backends at 16:45:24
 
 
 ## Compatibility matrix
@@ -57,30 +57,30 @@ Generated at: 2025-09-07 09:23:35
   groupby_agg      ok    ok       ok
   merge            ok    ok       ok
 ```
-- Completed compat_matrix at 16:21:31
+- Completed compat_matrix at 16:45:30
 
 
 ## Relational API demos
 
 # Relational API demos
 
-Generated at: 2025-09-08 16:21:49
+Generated at: 2025-09-08 16:45:49
 
 ```text
 backend  version       op  load_s  compute_s     rows  used_cores
 -------  --------  ------  ------  ---------  -------  ----------
-pandas   2.2.2       join  0.1769     0.0602  2000000           1
-pandas   2.2.2     concat  0.0000     0.0321  2000000           1
-dask     2024.5.1    join  0.0046     0.2404  2000000          11
-dask     2024.5.1  concat  0.0000     0.2017  1000000          11
-pyspark  3.5.1       join  4.3958     6.4000  2000000          11
-pyspark  3.5.1     concat  0.0000     5.2510  2000000          11
-polars   1.33.0      join  0.0238     0.0569  2000000           1
-polars   1.33.0    concat  0.0000     0.0318  2000000           1
-duckdb   1.3.2       join  0.1152     0.0522  2000000           1
-duckdb   1.3.2     concat  0.0000     0.0306  2000000           1
+pandas   2.2.2       join  0.2482     0.0570  2000000           1
+pandas   2.2.2     concat  0.0000     0.0314  2000000           1
+dask     2024.5.1    join  0.0052     0.2288  2000000          11
+dask     2024.5.1  concat  0.0000     0.1961  1000000          11
+pyspark  3.5.1       join  4.3042     6.5151  2000000          11
+pyspark  3.5.1     concat  0.0000     5.2438  2000000          11
+polars   1.33.0      join  0.0241     0.0554  2000000           1
+polars   1.33.0    concat  0.0000     0.0298  2000000           1
+duckdb   1.3.2       join  0.1140     0.0506  2000000           1
+duckdb   1.3.2     concat  0.0000     0.0288  2000000           1
 ```
-- Completed relational_bench at 16:21:49
+- Completed relational_bench at 16:45:49
 
 
 ## Skipped due to 3-minute budget
