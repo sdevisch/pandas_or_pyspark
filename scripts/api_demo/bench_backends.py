@@ -80,14 +80,16 @@ class Result:
     - backend: Backend name ('pandas', 'dask', 'pyspark', ...)
     - load_s: Seconds to read the CSV into a backend-native dataframe
     - compute_s: Seconds to compute and materialize output
-    - rows: Number of rows in the materialized pandas output (if applicable)
+    - input_rows: Total input rows processed
+    - groups: Number of groups produced (if groupby used)
     - used_cores: Approximate parallelism used by the backend
     - version: Version string of the backend module, if detectable
     """
     backend: str
     load_s: float
     compute_s: float
-    rows: Optional[int]
+    input_rows: Optional[int]
+    groups: Optional[int]
     used_cores: Optional[int]
     version: Optional[str]
 
@@ -149,6 +151,40 @@ def _used_cores_for_backend(backend: str) -> Optional[int]:
     return None
 
 
+def _count_rows_backend(df) -> int:
+    """Count rows without collecting entire dataset."""
+    try:
+        import pandas as _pd  # type: ignore
+        if isinstance(df, _pd.DataFrame):
+            return int(len(df.index))
+    except Exception:
+        pass
+    try:
+        import dask.dataframe as _dd  # type: ignore
+        from dask.dataframe import DataFrame as _DaskDF  # type: ignore
+        if isinstance(df, _DaskDF):
+            return int(df.shape[0].compute())
+    except Exception:
+        pass
+    try:
+        import pyspark.pandas as _ps  # type: ignore
+        from pyspark.pandas.frame import DataFrame as _PsDF  # type: ignore
+        if isinstance(df, _PsDF):
+            return int(df.to_spark().count())
+    except Exception:
+        pass
+    try:
+        import polars as _pl  # type: ignore
+        if isinstance(df, _pl.DataFrame):
+            return int(df.height)
+    except Exception:
+        pass
+    try:
+        return int(len(df))
+    except Exception:
+        return 0
+
+
 def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[str]) -> List[Result]:
     """Run the end-to-end micro-benchmark for each backend.
 
@@ -185,9 +221,16 @@ def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[s
                 print(f"[warn] groupby skipped for backend={backend}: {e}")
 
         t2 = time.perf_counter()
-        # Use a very large head bound to cap transfer without affecting timings
-        pdf = out.head(1000000000).to_pandas()
-        rows = len(pdf.index) if hasattr(pdf, "index") else None
+        # Count input rows (pre-op) for clarity
+        input_rows = _count_rows_backend(df.to_backend()) if hasattr(df, "to_backend") else None
+        # For compute timing, materialize with a bounded head but report groups when groupby is used
+        groups = None
+        if groupby:
+            try:
+                groups = _count_rows_backend(out.to_backend()) if hasattr(out, "to_backend") else None
+            except Exception:
+                groups = None
+        _ = out.head(1000000000).to_pandas()
         t3 = time.perf_counter()
 
         used = _used_cores_for_backend(backend)
@@ -201,7 +244,8 @@ def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[s
                 backend=backend,
                 load_s=t1 - t0,
                 compute_s=t3 - t2,
-                rows=rows,
+                input_rows=input_rows,
+                groups=groups,
                 used_cores=used,
                 version=ver,
             )
@@ -238,7 +282,8 @@ def _rows_for_console(results: List[Result], availability: List[Dict[str, object
     for name in Backends:
         r = by_backend.get(name)
         if r:
-            rows.append([name, str(r.version), f"{r.load_s:.4f}", f"{r.compute_s:.4f}", str(r.rows), str(r.used_cores)])
+            used = r.used_cores if (r.used_cores and r.used_cores > 0) else os.cpu_count()
+            rows.append([name, str(r.version), f"{r.load_s:.4f}", f"{r.compute_s:.4f}", str(r.input_rows), str(used)])
         else:
             ver = next((a["version"] for a in availability if a["backend"] == name), None)
             rows.append([name, str(ver), "-", "-", "-", "-"])
@@ -258,7 +303,7 @@ def _md_sections(args: argparse.Namespace, availability: List[Dict[str, object]]
     for item in availability:
         md.append(f"| {item['backend']} | {item['version']} | {'available' if item['available'] else 'unavailable'} |")
     md += ["", "## Results (seconds)", "", "```text"]
-    headers = ["backend", "version", "load_s", "compute_s", "rows", "used_cores"]
+    headers = ["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"]
     for line in _format_fixed_width_table(headers, rows):
         md.append(line)
     md.append("```")
