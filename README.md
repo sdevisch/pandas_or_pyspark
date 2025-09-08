@@ -11,6 +11,8 @@ Unified pandas-like API that runs with these backends:
 - pandas (default)
 - Dask DataFrame
 - pandas API on Spark (pyspark.pandas)
+- Polars
+- DuckDB
 
 Select backend via environment variable or at runtime.
 
@@ -25,6 +27,8 @@ pip install -e .
 pip install '.[pandas]'
 pip install '.[dask]'
 pip install '.[pyspark]'
+pip install '.[polars]'
+pip install '.[duckdb]'
 ```
 
 Usage
@@ -33,7 +37,7 @@ Usage
 Choose backend (env var or API):
 
 ```bash
-export UNIPANDAS_BACKEND=pandas    # or dask, pyspark
+export UNIPANDAS_BACKEND=pandas    # or dask, pyspark, polars, duckdb
 ```
 
 ```python
