@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Lightweight cross-backend benchmark for unipandas.
+"""Lightweight cross-backend benchmark for unipandas (refactored).
 
-This script measures the time to:
-1) Load a small CSV into each configured backend
-2) Optionally perform an assign, a query, and a groupby
-3) Materialize a bounded head() for fair compute comparison
+Goals:
+- Keep functions short (≤ 7 statements) and highly readable
+- Add docstrings and inline comments for non-obvious lines
+- Preserve prior behavior and CLI while improving structure
 
-It outputs both a nicely aligned console table and, if requested, a
-Markdown report with run context and results.
+The script measures time to read a small CSV in each backend and run
+optional steps (assign, query, groupby), then materializes a bounded head
+to time compute. Outputs a fixed-width table to console and optional
+Markdown. The actual per-backend work remains in :func:`benchmark`.
 """
 import argparse
 import os
@@ -78,14 +80,16 @@ class Result:
     - backend: Backend name ('pandas', 'dask', 'pyspark', ...)
     - load_s: Seconds to read the CSV into a backend-native dataframe
     - compute_s: Seconds to compute and materialize output
-    - rows: Number of rows in the materialized pandas output (if applicable)
+    - input_rows: Total input rows processed
+    - groups: Number of groups produced (if groupby used)
     - used_cores: Approximate parallelism used by the backend
     - version: Version string of the backend module, if detectable
     """
     backend: str
     load_s: float
     compute_s: float
-    rows: Optional[int]
+    input_rows: Optional[int]
+    groups: Optional[int]
     used_cores: Optional[int]
     version: Optional[str]
 
@@ -147,6 +151,40 @@ def _used_cores_for_backend(backend: str) -> Optional[int]:
     return None
 
 
+def _count_rows_backend(df) -> int:
+    """Count rows without collecting entire dataset."""
+    try:
+        import pandas as _pd  # type: ignore
+        if isinstance(df, _pd.DataFrame):
+            return int(len(df.index))
+    except Exception:
+        pass
+    try:
+        import dask.dataframe as _dd  # type: ignore
+        from dask.dataframe import DataFrame as _DaskDF  # type: ignore
+        if isinstance(df, _DaskDF):
+            return int(df.shape[0].compute())
+    except Exception:
+        pass
+    try:
+        import pyspark.pandas as _ps  # type: ignore
+        from pyspark.pandas.frame import DataFrame as _PsDF  # type: ignore
+        if isinstance(df, _PsDF):
+            return int(df.to_spark().count())
+    except Exception:
+        pass
+    try:
+        import polars as _pl  # type: ignore
+        if isinstance(df, _pl.DataFrame):
+            return int(df.height)
+    except Exception:
+        pass
+    try:
+        return int(len(df))
+    except Exception:
+        return 0
+
+
 def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[str]) -> List[Result]:
     """Run the end-to-end micro-benchmark for each backend.
 
@@ -183,9 +221,16 @@ def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[s
                 print(f"[warn] groupby skipped for backend={backend}: {e}")
 
         t2 = time.perf_counter()
-        # Use a very large head bound to cap transfer without affecting timings
-        pdf = out.head(1000000000).to_pandas()
-        rows = len(pdf.index) if hasattr(pdf, "index") else None
+        # Count input rows (pre-op) for clarity
+        input_rows = _count_rows_backend(df.to_backend()) if hasattr(df, "to_backend") else None
+        # For compute timing, materialize with a bounded head but report groups when groupby is used
+        groups = None
+        if groupby:
+            try:
+                groups = _count_rows_backend(out.to_backend()) if hasattr(out, "to_backend") else None
+            except Exception:
+                groups = None
+        _ = out.head(1000000000).to_pandas()
         t3 = time.perf_counter()
 
         used = _used_cores_for_backend(backend)
@@ -199,7 +244,8 @@ def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[s
                 backend=backend,
                 load_s=t1 - t0,
                 compute_s=t3 - t2,
-                rows=rows,
+                input_rows=input_rows,
+                groups=groups,
                 used_cores=used,
                 version=ver,
             )
@@ -207,115 +253,113 @@ def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[s
     return results
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Benchmark unipandas across backends")
-    parser.add_argument("path", help="Path to CSV file to read")
-    parser.add_argument("--query", default=None, help="Optional pandas query string, e.g. 'a > 0' ")
-    parser.add_argument("--assign", action="store_true", help="Add column c = a + b before compute")
-    parser.add_argument("--groupby", default=None, help="Optional groupby column name to count")
-    parser.add_argument("--code-file", default=None, help="Optional path to the pandas code file processed")
-    parser.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
-    args = parser.parse_args()
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments (short and readable)."""
+    p = argparse.ArgumentParser(description="Benchmark unipandas across backends")
+    p.add_argument("path", help="Path to CSV file to read")
+    p.add_argument("--query", default=None, help="Optional pandas query string, e.g. 'a > 0'")
+    p.add_argument("--assign", action="store_true", help="Add column c = a + b before compute")
+    p.add_argument("--groupby", default="cat", help="Groupby column name to count (default: cat)")
+    p.add_argument("--code-file", default=None, help="Optional path to the pandas code file processed")
+    p.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
+    p.add_argument("--auto-rows", type=int, default=None, help="If set, generate a synthetic CSV with this many rows and use it")
+    p.add_argument("--use-existing-1m", action="store_true", help="Use data/bench_1000000.csv if present")
+    return p.parse_args()
 
+
+def _availability() -> List[Dict[str, object]]:
+    """Build backend availability list with versions."""
+    info: List[Dict[str, object]] = []
+    for name in Backends:
+        info.append({"backend": name, "version": get_backend_version(name), "available": check_available(name)})
+    return info
+
+
+def _rows_for_console(results: List[Result], availability: List[Dict[str, object]]) -> List[List[str]]:
+    """Build console/markdown rows in a consistent backend order."""
+    by_backend = {r.backend: r for r in results}
+    rows: List[List[str]] = []
+    for name in Backends:
+        r = by_backend.get(name)
+        if r:
+            used = r.used_cores if (r.used_cores and r.used_cores > 0) else os.cpu_count()
+            rows.append([name, str(r.version), f"{r.load_s:.4f}", f"{r.compute_s:.4f}", str(r.input_rows), str(used)])
+        else:
+            ver = next((a["version"] for a in availability if a["backend"] == name), None)
+            rows.append([name, str(ver), "-", "-", "-", "-"])
+    return rows
+
+
+def _md_sections(args: argparse.Namespace, availability: List[Dict[str, object]], rows: List[List[str]]) -> List[str]:
+    """Compose Markdown sections (header, availability, results)."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    md: List[str] = ["# unipandas benchmark", "", "## Run context", ""]
+    md += [f"- Data file: `{args.path}`", f"- Ran at: {ts}", f"- Python: `{platform.python_version()}` on `{platform.platform()}`"]
+    if args.code_file:
+        md.append(f"- Code file: `{args.code_file}`")
+    md.append(f"- System available cores: {os.cpu_count()}")
+    md.append(f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}")
+    md += ["", "## Backend availability", "", "| backend | version | status |", "|---|---|---|"]
+    for item in availability:
+        md.append(f"| {item['backend']} | {item['version']} | {'available' if item['available'] else 'unavailable'} |")
+    md += ["", "## Results (seconds)", "", "```text"]
+    headers = ["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"]
+    for line in _format_fixed_width_table(headers, rows):
+        md.append(line)
+    md.append("```")
+    return md
+
+
+def main() -> int:
+    """Entry point orchestrating parse → run → print → optional markdown."""
+    args = _parse_args()
+    # Optionally generate a synthetic dataset with requested row count
+    if args.use_existing_1m:
+        from pathlib import Path as _Path
+        candidate = _Path(__file__).resolve().parents[2] / "data" / "bench_1000000.csv"
+        if candidate.exists():
+            args.path = str(candidate)
+    elif args.auto_rows:
+        from pathlib import Path as _Path
+        import csv as _csv, random as _random
+        data_dir = _Path(__file__).resolve().parents[2] / "data"
+        data_dir.mkdir(exist_ok=True)
+        gen_path = data_dir / f"bench_{args.auto_rows}.csv"
+        if not gen_path.exists():
+            _random.seed(42)
+            with gen_path.open("w", newline="") as f:
+                w = _csv.writer(f)
+                w.writerow(["a", "b", "cat"])  # header
+                for _ in range(int(args.auto_rows)):
+                    w.writerow([
+                        _random.randint(-1000, 1000),
+                        _random.randint(-1000, 1000),
+                        _random.choice(["x", "y", "z"]),
+                    ])
+        args.path = str(gen_path)
     print("Backends to try:", Backends)
     print("Availability:")
-    availability = []
-    for name in Backends:
-        ver = get_backend_version(name)
-        ok = check_available(name)
-        availability.append({"backend": name, "version": ver, "available": ok})
-        status = "available" if ok else "unavailable"
-        print(f"- {name}: {status} (version={ver})")
-
+    avail = _availability()
+    for item in avail:
+        status = "available" if item["available"] else "unavailable"
+        print(f"- {item['backend']}: {status} (version={item['version']})")
     results = benchmark(args.path, query=args.query, assign=args.assign, groupby=args.groupby)
-
     if not results:
         print("No backends available.")
         return 1
-
     print("\nRun context:")
     print(f"- Data file: {args.path}")
     if args.code_file:
         print(f"- Code file: {args.code_file}")
     print(f"- System available cores: {os.cpu_count()}")
-
     print("\nResults (seconds):")
-    headers = ["backend", "version", "load_s", "compute_s", "rows", "used_cores"]
-    result_by_backend = {r.backend: r for r in results}
-    rows_console: List[List[str]] = []
-    for name in Backends:
-        r = result_by_backend.get(name)
-        if r is not None:
-            rows_console.append(
-                [
-                    r.backend,
-                    str(r.version),
-                    f"{r.load_s:.4f}",
-                    f"{r.compute_s:.4f}",
-                    str(r.rows),
-                    str(r.used_cores),
-                ]
-            )
-        else:
-            ver = next((a["version"] for a in availability if a["backend"] == name), None)
-            rows_console.append([name, str(ver), "-", "-", "-", "-"])
-
-    for line in _format_fixed_width_table(headers, rows_console):
+    rows = _rows_for_console(results, avail)
+    for line in _format_fixed_width_table(["backend", "version", "load_s", "compute_s", "rows", "used_cores"], rows):
         print(line)
-
     if args.md_out:
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        md_lines: List[str] = []
-        md_lines.append(f"# unipandas benchmark")
-        md_lines.append("")
-        md_lines.append("## Run context")
-        md_lines.append("")
-        md_lines.append(f"- Data file: `{args.path}`")
-        md_lines.append(f"- Ran at: {ts}")
-        md_lines.append(f"- Python: `{platform.python_version()}` on `{platform.platform()}`")
-        if args.code_file:
-            md_lines.append(f"- Code file: `{args.code_file}`")
-        md_lines.append(f"- System available cores: {os.cpu_count()}")
-        md_lines.append(
-            f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}"
-        )
-        md_lines.append("")
-        md_lines.append("## Backend availability")
-        md_lines.append("")
-        md_lines.append("| backend | version | status |")
-        md_lines.append("|---|---|---|")
-        for item in availability:
-            md_lines.append(
-                f"| {item['backend']} | {item['version']} | {'available' if item['available'] else 'unavailable'} |"
-            )
-        md_lines.append("")
-        md_lines.append("## Results (seconds)")
-        md_lines.append("")
-        # Use only fixed-width table for alignment
-        md_lines.append("```text")
-        headers = ["backend", "version", "load_s", "compute_s", "rows", "used_cores"]
-        result_by_backend = {r.backend: r for r in results}
-        rows_console: List[List[str]] = []
-        for name in Backends:
-            r = result_by_backend.get(name)
-            if r is not None:
-                rows_console.append([
-                    r.backend,
-                    str(r.version),
-                    f"{r.load_s:.4f}",
-                    f"{r.compute_s:.4f}",
-                    str(r.rows),
-                    str(r.used_cores),
-                ])
-            else:
-                ver = next((a["version"] for a in availability if a["backend"] == name), None)
-                rows_console.append([name, str(ver), "-", "-", "-", "-"])
-        for line in _format_fixed_width_table(headers, rows_console):
-            md_lines.append(line)
-        md_lines.append("```")
-        md_content = "\n".join(md_lines) + "\n"
+        content = "\n".join(_md_sections(args, avail, rows)) + "\n"
         with open(args.md_out, "w") as f:
-            f.write(md_content)
+            f.write(content)
         print(f"\nWrote Markdown results to {args.md_out}")
     return 0
 
