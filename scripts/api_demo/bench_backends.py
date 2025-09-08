@@ -215,9 +215,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("path", help="Path to CSV file to read")
     p.add_argument("--query", default=None, help="Optional pandas query string, e.g. 'a > 0'")
     p.add_argument("--assign", action="store_true", help="Add column c = a + b before compute")
-    p.add_argument("--groupby", default=None, help="Optional groupby column name to count")
+    p.add_argument("--groupby", default="cat", help="Groupby column name to count (default: cat)")
     p.add_argument("--code-file", default=None, help="Optional path to the pandas code file processed")
     p.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
+    p.add_argument("--auto-rows", type=int, default=None, help="If set, generate a synthetic CSV with this many rows and use it")
+    p.add_argument("--use-existing-1m", action="store_true", help="Use data/bench_1000000.csv if present")
     return p.parse_args()
 
 
@@ -266,6 +268,30 @@ def _md_sections(args: argparse.Namespace, availability: List[Dict[str, object]]
 def main() -> int:
     """Entry point orchestrating parse → run → print → optional markdown."""
     args = _parse_args()
+    # Optionally generate a synthetic dataset with requested row count
+    if args.use_existing_1m:
+        from pathlib import Path as _Path
+        candidate = _Path(__file__).resolve().parents[2] / "data" / "bench_1000000.csv"
+        if candidate.exists():
+            args.path = str(candidate)
+    elif args.auto_rows:
+        from pathlib import Path as _Path
+        import csv as _csv, random as _random
+        data_dir = _Path(__file__).resolve().parents[2] / "data"
+        data_dir.mkdir(exist_ok=True)
+        gen_path = data_dir / f"bench_{args.auto_rows}.csv"
+        if not gen_path.exists():
+            _random.seed(42)
+            with gen_path.open("w", newline="") as f:
+                w = _csv.writer(f)
+                w.writerow(["a", "b", "cat"])  # header
+                for _ in range(int(args.auto_rows)):
+                    w.writerow([
+                        _random.randint(-1000, 1000),
+                        _random.randint(-1000, 1000),
+                        _random.choice(["x", "y", "z"]),
+                    ])
+        args.path = str(gen_path)
     print("Backends to try:", Backends)
     print("Availability:")
     avail = _availability()
