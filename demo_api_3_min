@@ -20,6 +20,8 @@ Design goals:
 import os
 import subprocess
 import sys
+import time
+import platform
 from pathlib import Path
 from datetime import datetime
 
@@ -37,8 +39,13 @@ REPORTS.mkdir(parents=True, exist_ok=True)
 REPORT = REPORTS / "demo_api_3_min.md"
 
 # Script paths used by the orchestrator
-# Smoke script generates per-section reports to be aggregated
-SMOKE = ROOT / "scripts" / "api_demo" / "smoke_reports.py"
+# Individual scripts used by the demo
+BENCH = ROOT / "scripts" / "api_demo" / "bench_backends.py"
+COMPAT = ROOT / "scripts" / "api_demo" / "compat_matrix.py"
+REL = ROOT / "scripts" / "api_demo" / "relational_bench.py"
+BRC = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
+BRC_OM = ROOT / "scripts" / "brc" / "billion_row_om_runner.py"
+BRC_1M = ROOT / "scripts" / "brc" / "brc_one_minute_runner.py"
 
 # Python executable used to spawn the benchmark driver
 PY = sys.executable or "python3"
@@ -56,6 +63,17 @@ def run_command(command_parts):
     """
     print("$", " ".join(command_parts))  # show the exact command
     subprocess.run(command_parts, check=True)  # fail fast if it errors
+
+
+def run_command_timeout(command_parts, timeout_s: float) -> bool:
+    """Run a command with a timeout; return True if finished, False if timed out."""
+    print("$", " ".join(command_parts))
+    try:
+        subprocess.run(command_parts, check=True, timeout=timeout_s)
+        return True
+    except subprocess.TimeoutExpired:
+        print(f"[timeout] {' '.join(command_parts)} after {timeout_s}s")
+        return False
 
 
 def _write_example_csv(path: Path) -> Path:
@@ -118,16 +136,31 @@ def init_report(path: Path) -> None:
     """
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # human-readable timestamp
     with path.open("w") as f:
-        f.write(f"# unipandas API demos\n\nGenerated at: {ts}\n\n")  # top-level heading
+        f.write(f"# unipandas API demos\n\nGenerated at: {ts}\n\n")
+        f.write(f"- Python: `{platform.python_version()}` on `{platform.platform()}`\n")
+        f.write(f"- CPU cores: {os.cpu_count()}\n\n")
 
 
-def build_smoke_command() -> list[str]:
-    """Construct the command to run the API demo smoke test.
+def append_lines(report_path: Path, lines: list[str]) -> None:
+    """Append raw lines to the aggregate report."""
+    with report_path.open("a") as f:
+        f.write("\n".join(lines) + "\n")
 
-    Returns:
-        List of command tokens to invoke the smoke script via Python.
-    """
-    return [PY, str(SMOKE)]
+
+def _ensure_smoke_csv() -> Path:
+    """Create a small CSV used by demo scripts if missing."""
+    data = ROOT / "data"
+    data.mkdir(exist_ok=True)
+    sample = data / "smoke.csv"
+    if not sample.exists():
+        import csv
+        with sample.open("w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["a", "b", "cat"])  # columns used by the bench
+            w.writerow([1, 2, "x"])
+            w.writerow([-1, 5, "y"])
+            w.writerow([3, -2, "x"])
+    return sample
 
 
 def append_section(report_path: Path, title: str, md_part: Path) -> None:
@@ -143,20 +176,72 @@ def append_section(report_path: Path, title: str, md_part: Path) -> None:
         f.write(md_part.read_text())  # Insert the fragment verbatim
 
 
-def run_smoke_and_append() -> None:
-    """Run the smoke script and append its generated Markdown sections.
+def run_demo_and_append() -> None:
+    """Run selected scripts under a 3-minute wall-clock budget, updating the report incrementally."""
+    sample = _ensure_smoke_csv()
+    start = time.perf_counter()
+    deadline = start + 180.0
+    skipped: list[str] = []
+    # 1) Bench backends (API demo) → reports/api_demo/api_demo_smoke.md
+    if time.perf_counter() < deadline:
+        run_command([
+            PY, str(BENCH), str(sample), "--assign", "--query", "a > 0", "--groupby", "cat",
+            "--md-out", str(REPORTS / "api_demo_smoke.md"),
+        ])
+        append_section(REPORT, "API demo smoke run", REPORTS / "api_demo_smoke.md")
+        append_lines(REPORT, [f"- Completed bench_backends at {time.strftime('%H:%M:%S')}\n"])  # quick status
+    else:
+        skipped.append("bench_backends")
 
-    The smoke script is responsible for writing these files under
-    ``reports/api_demo``:
-    - ``api_demo_smoke.md``: quick backends run
-    - ``compatibility.md``: operations compatibility across backends
-    - ``relational_api_demo.md``: small join/concat demonstrations
-    """
-    run_command(build_smoke_command())  # execute the smoke generator
-    # Append sections produced by the smoke script in a friendly order
-    append_section(REPORT, "API demo smoke run", REPORTS / "api_demo_smoke.md")
-    append_section(REPORT, "Compatibility matrix", REPORTS / "compatibility.md")
-    append_section(REPORT, "Relational API demos", REPORTS / "relational_api_demo.md")
+    # 2) Compatibility matrix → reports/api_demo/compatibility.md
+    if time.perf_counter() < deadline:
+        run_command([PY, str(COMPAT), "--md-out", str(REPORTS / "compatibility.md")])
+        append_section(REPORT, "Compatibility matrix", REPORTS / "compatibility.md")
+        append_lines(REPORT, [f"- Completed compat_matrix at {time.strftime('%H:%M:%S')}\n"])  # quick status
+    else:
+        skipped.append("compat_matrix")
+
+    # 3) Relational API demos → reports/api_demo/relational_api_demo.md
+    if time.perf_counter() < deadline:
+        run_command([PY, str(REL), "--md-out", str(REPORTS / "relational_api_demo.md")])
+        append_section(REPORT, "Relational API demos", REPORTS / "relational_api_demo.md")
+        append_lines(REPORT, [f"- Completed relational_bench at {time.strftime('%H:%M:%S')}\n"])  # quick status
+    else:
+        skipped.append("relational_bench")
+
+    # 4) BRC small scaffold (write to smoke-specific file) with 30s budget total
+    # Use small generated CSV to avoid long runs; still demonstrate end-to-end.
+    if time.perf_counter() < deadline:
+        ok = run_command_timeout([
+            PY, str(BRC), "--rows-per-chunk", "1000", "--num-chunks", "1", "--operation", "groupby",
+            "--md-out", str(ROOT / "reports" / "brc" / "billion_row_challenge_smoke.md"),
+        ], timeout_s=min(30.0, max(1.0, deadline - time.perf_counter())))
+        if not ok:
+            skipped.append("billion_row_challenge (timeout)")
+    else:
+        skipped.append("billion_row_challenge")
+
+    # 5) BRC one-minute runner with 30s budget
+    if time.perf_counter() < deadline:
+        ok = run_command_timeout([PY, str(BRC_1M), "--budget", "30", "--operation", "groupby"],
+                                 timeout_s=min(30.0, max(1.0, deadline - time.perf_counter())))
+        if not ok:
+            skipped.append("brc_one_minute_runner (timeout)")
+    else:
+        skipped.append("brc_one_minute_runner")
+
+    # 6) BRC OM runner with 30s per step
+    if time.perf_counter() < deadline:
+        ok = run_command_timeout([PY, str(BRC_OM), "--budgets", "30"],
+                                 timeout_s=min(30.0, max(1.0, deadline - time.perf_counter())))
+        if not ok:
+            skipped.append("billion_row_om_runner (timeout)")
+    else:
+        skipped.append("billion_row_om_runner")
+
+    # Note any tasks we did not run due to time budget
+    if skipped:
+        append_lines(REPORT, ["", "## Skipped due to 3-minute budget", *[f"- {name}" for name in skipped], ""]) 
 
 
 def main() -> int:
@@ -167,7 +252,7 @@ def main() -> int:
     """
     ensure_data()  # ensure inputs for quick demos
     init_report(REPORT)  # start fresh aggregate report
-    run_smoke_and_append()  # execute smoke and aggregate outputs
+    run_demo_and_append()  # execute selected scripts and aggregate outputs
     print("\nAggregated report:", REPORT)
     return 0
 
