@@ -37,7 +37,7 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
-REPORTS = ROOT / "reports" / "api_demo"
+REPORTS = ROOT / "scripts" / "reports" / "api_demo"
 REPORTS.mkdir(exist_ok=True)
 OUT = REPORTS / "relational_api_demo.md"
 

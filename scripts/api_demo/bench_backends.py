@@ -358,9 +358,18 @@ def main() -> int:
         print(line)
     if args.md_out:
         content = "\n".join(_md_sections(args, avail, rows)) + "\n"
-        with open(args.md_out, "w") as f:
+        from pathlib import Path as _Path
+        out_path = _Path(args.md_out)
+        if not out_path.is_absolute():
+            # default relative outputs under scripts/reports/api_demo
+            base = _Path(__file__).resolve().parents[1] / "reports" / "api_demo"
+            base.mkdir(parents=True, exist_ok=True)
+            out_path = base / out_path.name
+        else:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
             f.write(content)
-        print(f"\nWrote Markdown results to {args.md_out}")
+        print(f"\nWrote Markdown results to {out_path}")
     return 0
 
 

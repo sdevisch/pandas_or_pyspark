@@ -31,8 +31,8 @@ from datetime import datetime
 ROOT = Path(__file__).resolve().parent
 # Location for small, quick-to-generate CSVs used by demos
 DATA = ROOT / "data"
-# Write reports under the api_demo namespace
-REPORTS = ROOT / "reports" / "api_demo"
+# Write reports under scripts/reports/api_demo namespace (one level up under scripts)
+REPORTS = ROOT / "scripts" / "reports" / "api_demo"
 # Ensure directory exists before writing any fragments or aggregates
 REPORTS.mkdir(parents=True, exist_ok=True)
 # Aggregated output produced by this script
