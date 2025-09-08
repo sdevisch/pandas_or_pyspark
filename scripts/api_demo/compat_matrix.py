@@ -11,13 +11,13 @@ from unipandas import configure_backend
 from unipandas.io import read_csv
 from unipandas.frame import Frame
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 REPORTS = ROOT / "reports" / "api_demo"
 REPORTS.mkdir(exist_ok=True)
 OUT = REPORTS / "compatibility.md"
 
-Backends = ["pandas", "dask", "pyspark"]
+Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
 
 
 def make_dataset() -> Path:

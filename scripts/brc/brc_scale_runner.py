@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REPORTS = ROOT / "reports" / "brc"
 REPORTS.mkdir(parents=True, exist_ok=True)
 OUT = REPORTS / "brc_scale.md"

@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 GEN = ROOT / "scripts" / "brc_generate_data.py"
 
 SCALES = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
