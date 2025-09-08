@@ -167,6 +167,7 @@ class Result:
     rows: Optional[int]
     used_cores: Optional[int]
     version: Optional[str]
+    groups: Optional[int] = None
 
 
 def get_backend_version(backend: str) -> Optional[str]:
@@ -199,7 +200,7 @@ def parse_arguments():
     args_list = [
         ("--rows-per-chunk", dict(type=int, default=1_000_000)),
         ("--num-chunks", dict(type=int, default=1)),
-        ("--operation", dict(default="groupby", choices=["filter", "groupby"])),
+        ("--operation", dict(default="groupby", choices=["filter", "groupby", "both"])),
         ("--materialize", dict(default="count", choices=["head", "count", "all"])),
         ("--data-glob", dict(default=None)),
         ("--only-backend", dict(default=None)),
@@ -344,15 +345,27 @@ def _build_groupby_preview_lines(chunks: List[Path], backend: str, limit: int = 
             out = out.reset_index()  # ensure 'cat' is a column for printing
         except Exception:
             pass
+        # Enforce consistent category order for readability
+        try:
+            if "cat" in out.columns:
+                import pandas as _pd  # type: ignore
+
+                ordered = _pd.Categorical(out["cat"], categories=["x", "y", "z"], ordered=True)
+                out = out.assign(cat=ordered).sort_values("cat").reset_index(drop=True)
+        except Exception:
+            try:
+                out = out.sort_values(list(out.columns)[0]).reset_index(drop=True)
+            except Exception:
+                pass
         out = out.head(limit)
-        headers = [str(c) for c in list(out.columns)]
-        rows = [[str(v) for v in row] for row in out.to_records(index=False)]
+        headers = ["backend"] + [str(c) for c in list(out.columns)]
+        rows = [[backend] + [str(v) for v in row] for row in out.to_records(index=False)]
         return format_fixed(headers, rows)
     except Exception:
         return ["(preview unavailable)"]
 
 
-def run_backend(backend: str, chunks: List[Path], op: str) -> Result:
+def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[int]) -> Result:
     """Run the full read+compute pipeline for a single backend and return timings."""
     configure_backend(backend)
     combined, read_s, _ = measure_read(chunks, backend)
@@ -362,7 +375,28 @@ def run_backend(backend: str, chunks: List[Path], op: str) -> Result:
     import os as __os
     mat = __os.environ.get("BRC_MATERIALIZE", "head")
     rows, compute_s = run_operation(combined, op, mat)
-    return Result(backend=backend, op=op, read_s=read_s, compute_s=compute_s, rows=rows, used_cores=used, version=ver)
+    if op == "groupby":
+        # For groupby, interpret the counted rows as number of output groups
+        return Result(
+            backend=backend,
+            op=op,
+            read_s=read_s,
+            compute_s=compute_s,
+            rows=input_rows,  # report input rows processed
+            used_cores=used,
+            version=ver,
+            groups=rows,
+        )
+    return Result(
+        backend=backend,
+        op=op,
+        read_s=read_s,
+        compute_s=compute_s,
+        rows=rows,
+        used_cores=used,
+        version=ver,
+        groups=None,
+    )
 
 
 def choose_backends(only_backend: Optional[str]) -> List[str]:
@@ -372,15 +406,46 @@ def choose_backends(only_backend: Optional[str]) -> List[str]:
     return Backends
 
 
-def build_rows(results: List[Result]) -> List[List[str]]:
+def build_rows(results: List[Result], *, include_groups: bool = False) -> List[List[str]]:
     """Format results into string rows for fixed-width table rendering."""
     rows: List[List[str]] = []
     for r in results:
-        rows.append([r.backend, str(r.version), r.op, f"{r.read_s:.4f}", f"{r.compute_s:.4f}", str(r.rows), str(r.used_cores)])
+        def fmt_num(v: Optional[float]) -> str:
+            return f"{v:.4f}" if isinstance(v, float) and v > 0 else "-"
+        base = [
+            r.backend,
+            str(r.version),
+            r.op,
+            fmt_num(r.read_s if r.read_s is not None else None),
+            fmt_num(r.compute_s if r.compute_s is not None else None),
+            str(r.rows) if r.rows is not None else "-",
+            str(r.used_cores) if r.used_cores is not None else "-",
+        ]
+        if include_groups:
+            # Show number of output groups in a dedicated column
+            base.append(str(r.groups) if r.groups is not None else "-")
+        rows.append(base)
     return rows
 
 
-def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str]) -> None:
+def _system_info_lines() -> List[str]:
+    import platform as _platform
+    import os as _osmod
+    lines: List[str] = []
+    lines.append(f"- Python: `{_platform.python_version()}` on `{_platform.platform()}`")
+    lines.append(f"- CPU cores: {_osmod.cpu_count()}")
+    # Try to add total memory if psutil is available
+    try:
+        import psutil as _ps  # type: ignore
+
+        mem_gb = getattr(_ps.virtual_memory(), "total", 0) / (1024 ** 3)
+        lines.append(f"- RAM: {mem_gb:.1f} GiB")
+    except Exception:
+        pass
+    return lines
+
+
+def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str], *, append: bool = False, title_suffix: str = "") -> None:
     """Write a fixed-width Markdown report including header context and timings.
 
     Show all result lines verbatim without truncation.
@@ -388,12 +453,15 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
     op_val = results[0].op if results else "-"
+    include_groups = op_val == "groupby"
+    if include_groups:
+        headers = headers + ["groups"]
     mat_val = os.environ.get("BRC_MATERIALIZE", "head")
     source = _detect_source(chunks)
     input_rows = _total_rows_from_parquet(chunks)
-    rows_text = format_fixed(headers, build_rows(results))
+    rows_text = format_fixed(headers, build_rows(results, include_groups=include_groups))
     lines = [
-        "# Billion Row Challenge (scaffold)",
+        "# Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""),
         "",
         f"Generated at: {ts}",
         "",
@@ -403,24 +471,26 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
         f"- source: {source}",
         f"- input_rows: {input_rows if input_rows is not None else '-'}",
+        *(_system_info_lines()),
         "",
         "```text",
         *rows_text,
         "```",
         "",
     ]
-    # Add a small preview of the groupby output to demonstrate actual results
-    if op_val == "groupby":
-        lines.extend([
-            "Groupby result preview:",
-            "",
-            "```text",
-            *_build_groupby_preview_lines(chunks, results[0].backend if results else "pandas"),
-            "```",
-            "",
-        ])
+    # Add a small combined preview of the groupby output across all backends
+    if op_val == "groupby" and results:
+        lines.extend(["Groupby result preview (by backend):", "", "```text"])
+        for r in results:
+            if r.backend:
+                lines.extend(_build_groupby_preview_lines(chunks, r.backend))
+        lines.extend(["```", ""])
     out_path = Path(md_out) if md_out else OUT
-    out_path.write_text("\n".join(lines))
+    mode = "a" if append and out_path.exists() else "w"
+    with out_path.open(mode) as f:
+        if mode == "a":
+            f.write("\n\n")
+        f.write("\n".join(lines))
     print("Wrote", out_path)
 
 def main():
@@ -432,27 +502,36 @@ def main():
     # Build rows for all known backends, including unavailable ones, so the
     # report always shows a complete matrix of backends with their status.
     availability = {b: check_available(b) for b in Backends}
+    def run_for_op(op: str, *, append: bool, title: str, include_placeholders: bool) -> None:
+        results_local: List[Result] = []
+        for backend in backends_to_run:
+            if not availability.get(backend, False):
+                continue
+            results_local.append(run_backend(backend, chunks, op, _total_rows_from_parquet(chunks)))
+        if include_placeholders:
+            have = {r.backend for r in results_local}
+            for backend in Backends:
+                if backend not in have:
+                    results_local.append(
+                        Result(
+                            backend=backend,
+                            op=op,
+                            read_s=None,  # type: ignore
+                            compute_s=None,  # type: ignore
+                            rows=None,
+                            used_cores=None,
+                            version=get_backend_version(backend),
+                        )
+                    )
+        write_report(chunks, results_local, args.md_out, append=append, title_suffix=title)
+
     backends_to_run = [args.only_backend] if args.only_backend else Backends
-    for backend in backends_to_run:
-        if not availability.get(backend, False):
-            continue
-        results.append(run_backend(backend, chunks, args.operation))
-    # Insert placeholders for unavailable backends to make them visible.
-    have = {r.backend for r in results}
-    for backend in Backends:
-        if backend not in have:
-            results.append(
-                Result(
-                    backend=backend,
-                    op=args.operation,
-                    read_s=0.0,
-                    compute_s=0.0,
-                    rows=None,
-                    used_cores=None,
-                    version=get_backend_version(backend),
-                )
-            )
-    write_report(chunks, results, args.md_out)
+    include_ph = args.only_backend is None
+    if args.operation == "both":
+        run_for_op("filter", append=False, title="filter", include_placeholders=include_ph)
+        run_for_op("groupby", append=True, title="groupby", include_placeholders=include_ph)
+    else:
+        run_for_op(args.operation, append=False, title=args.operation, include_placeholders=include_ph)
     print(f"Ran BRC with operation={args.operation} materialize={args.materialize}")
 
 
