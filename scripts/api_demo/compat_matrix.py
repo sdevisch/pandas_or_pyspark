@@ -87,18 +87,39 @@ OPS: List[Tuple[str, Callable[[Frame], Frame]]] = [
 
 def try_ops_for_backend(backend: str, path: Path) -> Dict[str, str]:
     results: Dict[str, str] = {}
+    # Optional availability short-circuit via scripts/utils.py
+    _check_available = None
+    try:
+        from .utils import check_available as _check_available  # type: ignore
+    except Exception:
+        try:
+            import sys as _sys
+            from pathlib import Path as _Path
+            _sys.path.append(str(_Path(__file__).resolve().parents[1]))
+            from utils import check_available as _check_available  # type: ignore
+        except Exception:
+            _check_available = None  # type: ignore
+
+    if _check_available is not None:
+        try:
+            if not _check_available(backend):
+                for name, _ in OPS:
+                    results[name] = "unavailable"
+                return results
+        except Exception:
+            pass
     try:
         configure_backend(backend)
-    except Exception as e:
+    except Exception:
         for name, _ in OPS:
-            results[name] = f"unavailable ({e})"
+            results[name] = "unavailable"
         return results
 
     try:
         df = read_csv(str(path))
-    except Exception as e:
+    except Exception:
         for name, _ in OPS:
-            results[name] = f"load_fail ({e})"
+            results[name] = "load_fail"
         return results
 
     for name, fn in OPS:
@@ -106,8 +127,8 @@ def try_ops_for_backend(backend: str, path: Path) -> Dict[str, str]:
             out = fn(df)
             _ = out.head(10).to_pandas()
             results[name] = "ok"
-        except Exception as e:
-            results[name] = f"fail ({type(e).__name__})"
+        except Exception:
+            results[name] = "fail"
     return results
 
 
