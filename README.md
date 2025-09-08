@@ -123,7 +123,7 @@ Benchmarking
 Run the same workload across available backends and compare timings:
 
 ```bash
-python scripts/bench_backends.py path/to/data.csv --assign --query "a > 0" --groupby a
+python scripts/api_demo/bench_backends.py path/to/data.csv --assign --query "a > 0" --groupby a
 ```
 
 Repository structure
@@ -136,9 +136,9 @@ Repository structure
 
 - Scripts (CLI tools, demos and runners)
   - API demos
-    - `scripts/bench_backends.py`: time the same workload across pandas, Dask, pandas-on-Spark; writes Markdown via `--md-out`
-    - `scripts/relational_bench.py`: join/concat demos; writes `reports/api_demo/relational_api_demo.md`
-    - `scripts/compat_matrix.py`: generate a compatibility matrix; writes `reports/api_demo/compatibility.md`
+    - `scripts/api_demo/bench_backends.py`: time the same workload across pandas, Dask, pandas-on-Spark; writes Markdown via `--md-out`
+    - `scripts/api_demo/relational_bench.py`: join/concat demos; writes `reports/api_demo/relational_api_demo.md`
+    - `scripts/api_demo/compat_matrix.py`: generate a compatibility matrix; writes `reports/api_demo/compatibility.md`
   - Billion Row Challenge (under `scripts/brc/`, outputs in `reports/brc/`)
     - `billion_row_challenge.py`: scalable scaffold (chunked Parquet/CSV, filter/groupby, materialization modes)
     - `billion_row_om_runner.py`: order-of-magnitude runner with per-step timeout
@@ -159,11 +159,11 @@ Quick start
 1) Ensure a Python env with desired backends (see Install). For Spark:
    `export PYARROW_IGNORE_TIMEZONE=1`
 2) Quick API demo across backends:
-   `python scripts/bench_backends.py data/example.csv --assign --query "a > 0" --groupby cat --md-out reports/api_demo/quick.md`
+   `python scripts/api_demo/bench_backends.py data/example.csv --assign --query "a > 0" --groupby cat --md-out reports/api_demo/quick.md`
 3) Relational workloads (join/concat):
-   `python scripts/relational_bench.py`
+   `python scripts/api_demo/relational_bench.py`
 4) Compatibility matrix:
-   `python scripts/compat_matrix.py`
+   `python scripts/api_demo/compat_matrix.py`
 5) Billion row challenge scaffold (groupby + count):
    `python scripts/brc/billion_row_challenge.py --operation groupby --materialize count`
 6) Order-of-magnitude runner (per-step budget):
