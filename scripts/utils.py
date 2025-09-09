@@ -120,12 +120,15 @@ def write_fixed_markdown(
     rows: List[List[str]],
     preface_lines: Optional[List[str]] = None,
     right_align_from: int = 2,
+    suffix_lines: Optional[List[str]] = None,
 ) -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines: List[str] = [f"# {title}", "", f"Generated at: {ts}", ""]
     if preface_lines:
         lines.extend(preface_lines)
     lines.extend(["```text", *format_fixed(headers, rows, right_align_from=right_align_from), "```", ""])
+    if suffix_lines:
+        lines.extend(suffix_lines)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines))
     print("Wrote", out_path)
