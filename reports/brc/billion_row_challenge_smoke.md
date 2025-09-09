@@ -1,8 +1,8 @@
-# Billion Row Challenge (scaffold) - groupby
+# Billion Row Challenge (scaffold) - filter
 
-Generated at: 2025-09-08 17:52:23
+Generated at: 2025-09-08 18:21:21
 
-- operation: groupby
+- operation: filter
 - materialize: count
 - num_chunks: 1
 - total_bytes: 15672
@@ -12,41 +12,11 @@ Generated at: 2025-09-08 17:52:23
 - CPU cores: 11
 
 ```text
-backend  version        op  read_s  compute_s  rows  used_cores  groups
--------  --------  -------  ------  ---------  ----  ----------  ------
-pandas   2.2.2     groupby  0.0010     0.0016     -           1       3
-dask     2024.5.1  groupby  0.0041     0.0182     -          11       3
-pyspark  3.5.1     groupby  3.7868     0.4659     -          11       3
-polars   1.33.0    groupby  0.0040     0.0009     -           1       3
-duckdb   1.3.2     groupby  0.0143     0.0006     -           1       3
-```
-
-Groupby result preview (by backend):
-
-```text
-backend  cat      x                   y
--------  ---  -----  ------------------
-pandas   x     4186  -7.863768115942029
-pandas   y    11034  -2.033132530120482
-pandas   z     6640   29.51702786377709
-backend  cat      x                   y
--------  ---  -----  ------------------
-dask     x     4186  -7.863768115942029
-dask     y    11034  -2.033132530120482
-dask     z     6640   29.51702786377709
-backend  cat      x                   y
--------  ---  -----  ------------------
-pyspark  x     4186  -7.863768115942029
-pyspark  y    11034  -2.033132530120482
-pyspark  z     6640   29.51702786377709
-backend  cat      x                   y
--------  ---  -----  ------------------
-polars   x     4186  -7.863768115942029
-polars   y    11034  -2.033132530120482
-polars   z     6640   29.51702786377709
-backend  cat      x                   y
--------  ---  -----  ------------------
-duckdb   x     4186  -7.863768115942029
-duckdb   y    11034  -2.033132530120482
-duckdb   z     6640   29.51702786377709
+backend  version       op  read_s  compute_s  rows  used_cores
+-------  --------  ------  ------  ---------  ----  ----------
+pandas   2.2.2     filter  0.0019     0.0027   252           1
+dask     2024.5.1  filter  0.0037     0.0046   252          11
+pyspark  3.5.1     filter  4.0513     0.3509   252          11
+polars   1.33.0    filter  0.0036     0.0013   252           1
+duckdb   1.3.2     filter  0.0145     0.0008   252           1
 ```

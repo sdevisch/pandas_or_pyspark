@@ -3,7 +3,7 @@
 ## Run context
 
 - Data file: `/Users/sdevisch/repos/pandas_or_pyspark/data/smoke.csv`
-- Ran at: 2025-09-08 17:51:53
+- Ran at: 2025-09-08 18:20:51
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
 - System available cores: 11
 - Args: assign=True, query='a > 0', groupby='cat'
@@ -23,9 +23,9 @@
 ```text
 backend  version   load_s  compute_s  input_rows  used_cores
 -------  --------  ------  ---------  ----------  ----------
-pandas   2.2.2     0.0017     0.0000           3           1
-dask     2024.5.1  0.0069     0.0261           3          11
-pyspark  3.5.1     4.6723     0.7514           3          11
-polars   1.33.0    0.0160     0.0000           3          11
-duckdb   1.3.2     0.0506     0.0000           3          11
+pandas   2.2.2     0.0009     0.0000           3           1
+dask     2024.5.1  0.0039     0.0207           3          11
+pyspark  3.5.1     4.7250     0.8289           3          11
+polars   1.33.0    0.0146     0.0000           3          11
+duckdb   1.3.2     0.0490     0.0000           3          11
 ```

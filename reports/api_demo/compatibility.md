@@ -1,6 +1,6 @@
 # Compatibility matrix
 
-Generated at: 2025-09-08 17:51:53
+Generated at: 2025-09-08 18:20:51
 
 ```text
   operation    pandas  dask  pyspark  polars  duckdb

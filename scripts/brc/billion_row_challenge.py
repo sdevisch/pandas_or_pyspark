@@ -85,6 +85,7 @@ try:
         check_available as utils_check_available,
         format_fixed as utils_format_fixed,
         Backends as ALL_BACKENDS,
+        write_fixed_markdown as utils_write_fixed_markdown,
     )
 except Exception:
     # Allow running as a standalone script
@@ -101,6 +102,7 @@ except Exception:
         check_available as utils_check_available,
         format_fixed as utils_format_fixed,
         Backends as ALL_BACKENDS,
+        write_fixed_markdown as utils_write_fixed_markdown,
     )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -446,25 +448,16 @@ def _system_info_lines() -> List[str]:
 
 
 def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str], *, append: bool = False, title_suffix: str = "") -> None:
-    """Write a fixed-width Markdown report including header context and timings.
-
-    Show all result lines verbatim without truncation.
-    """
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Write a fixed-width Markdown report via shared markdown helpers."""
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
     op_val = results[0].op if results else "-"
-    include_groups = op_val == "groupby"
+    include_groups = any(getattr(r, "groups", None) is not None for r in results)
     if include_groups:
         headers = headers + ["groups"]
     mat_val = os.environ.get("BRC_MATERIALIZE", "head")
     source = _detect_source(chunks)
     input_rows = _total_rows_from_parquet(chunks)
-    rows_text = format_fixed(headers, build_rows(results, include_groups=include_groups))
-    lines = [
-        "# Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""),
-        "",
-        f"Generated at: {ts}",
-        "",
+    preface = [
         f"- operation: {op_val}",
         f"- materialize: {mat_val}",
         f"- num_chunks: {len(chunks)}",
@@ -473,25 +466,29 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         f"- input_rows: {input_rows if input_rows is not None else '-'}",
         *(_system_info_lines()),
         "",
-        "```text",
-        *rows_text,
-        "```",
-        "",
     ]
-    # Add a small combined preview of the groupby output across all backends
+    rows = build_rows(results, include_groups=include_groups)
+    suffix = None
     if op_val == "groupby" and results:
-        lines.extend(["Groupby result preview (by backend):", "", "```text"])
+        suffix_lines = ["Groupby result preview (by backend):", "", "```text"]
         for r in results:
             if r.backend:
-                lines.extend(_build_groupby_preview_lines(chunks, r.backend))
-        lines.extend(["```", ""])
+                suffix_lines.extend(_build_groupby_preview_lines(chunks, r.backend))
+        suffix_lines.extend(["```", ""])
+        suffix = suffix_lines
     out_path = Path(md_out) if md_out else OUT
-    mode = "a" if append and out_path.exists() else "w"
-    with out_path.open(mode) as f:
-        if mode == "a":
-            f.write("\n\n")
-        f.write("\n".join(lines))
-    print("Wrote", out_path)
+    if append and out_path.exists():
+        existing = out_path.read_text()
+        out_path.write_text(existing + "\n\n")
+    utils_write_fixed_markdown(
+        out_path=out_path,
+        title="Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""),
+        headers=headers,
+        rows=rows,
+        preface_lines=preface,
+        right_align_from=3,
+        suffix_lines=suffix,
+    )
 
 def main():
     args = parse_arguments()
