@@ -231,6 +231,25 @@ def resolve_chunks(args) -> List[Path]:
 
 
 
+def _compute_input_rows_general(chunks: List[Path], args) -> Optional[int]:
+    """Best-effort total input rows across chunks.
+
+    Prefers Parquet metadata when available; otherwise, if chunks were
+    generated in-process (no --data-glob), uses rows_per_chunk * num_chunks.
+    Returns None for unknown external CSVs.
+    """
+    parquet_rows = _total_rows_from_parquet(chunks)
+    if parquet_rows is not None:
+        return parquet_rows
+    try:
+        # If we generated CSVs ourselves (no data_glob), we know exact counts
+        if not getattr(args, "data_glob", None):
+            return int(getattr(args, "rows_per_chunk", 0)) * int(getattr(args, "num_chunks", 0))
+    except Exception:
+        pass
+    return None
+
+
 def _detect_source(chunks: List[Path]) -> str:
     """Return 'parquet' if any chunk is .parquet, else 'csv'."""
     for p in chunks:
@@ -452,7 +471,7 @@ def _system_info_lines() -> List[str]:
     return lines
 
 
-def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str], *, append: bool = False, title_suffix: str = "") -> None:
+def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str], *, append: bool = False, title_suffix: str = "", input_rows_override: Optional[int] = None) -> None:
     """Write a fixed-width Markdown report via shared markdown helpers."""
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
     op_val = results[0].op if results else "-"
@@ -461,7 +480,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         headers = headers + ["groups"]
     mat_val = os.environ.get("BRC_MATERIALIZE", "head")
     source = _detect_source(chunks)
-    input_rows = _total_rows_from_parquet(chunks)
+    input_rows = input_rows_override if input_rows_override is not None else _total_rows_from_parquet(chunks)
     preface = [
         f"- operation: {op_val}",
         f"- materialize: {mat_val}",
@@ -506,10 +525,11 @@ def main():
     availability = {b: check_available(b) for b in Backends}
     def run_for_op(op: str, *, append: bool, title: str, include_placeholders: bool) -> None:
         results_local: List[Result] = []
+        input_rows_total = _compute_input_rows_general(chunks, args)
         for backend in backends_to_run:
             if not availability.get(backend, False):
                 continue
-            results_local.append(run_backend(backend, chunks, op, _total_rows_from_parquet(chunks)))
+            results_local.append(run_backend(backend, chunks, op, input_rows_total))
         if include_placeholders:
             have = {r.backend for r in results_local}
             for backend in Backends:
@@ -525,7 +545,7 @@ def main():
                             version=get_backend_version(backend),
                         )
                     )
-        write_report(chunks, results_local, args.md_out, append=append, title_suffix=title)
+        write_report(chunks, results_local, args.md_out, append=append, title_suffix=title, input_rows_override=input_rows_total)
 
     backends_to_run = [args.only_backend] if args.only_backend else Backends
     include_ph = args.only_backend is None
