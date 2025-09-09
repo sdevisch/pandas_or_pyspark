@@ -5,7 +5,18 @@ from typing import List, Tuple
 import time
 
 from unipandas import configure_backend
-from scripts.brc.brc_shared import read_frames_for_backend, concat_frames, measure_read  # type: ignore
+try:
+    # Package-style import
+    from .brc_shared import read_frames_for_backend, concat_frames, measure_read  # type: ignore
+except Exception:
+    # Script-style fallback
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _here = _Path(__file__).resolve()
+    _sys.path.append(str(_here.parents[0]))  # scripts/brc
+    _sys.path.append(str(_here.parents[1]))  # scripts
+    from brc_shared import read_frames_for_backend, concat_frames, measure_read  # type: ignore
 
 
 def combine_chunks(chunks: List[Path], backend: str):
