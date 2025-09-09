@@ -75,9 +75,11 @@ from unipandas import configure_backend
 from unipandas.frame import Frame
 try:
     from .brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
+    from .brc_core import compute_op_and_count  # type: ignore
 except Exception:
     # Allow running as a standalone script
     from brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
+    from brc_core import compute_op_and_count  # type: ignore
 try:
     from .utils import (
         get_backend_version as utils_get_backend_version,
@@ -376,7 +378,10 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
     # materialize mode from CLI via environment captured upstream; fall back to head
     import os as __os
     mat = __os.environ.get("BRC_MATERIALIZE", "head")
-    rows, compute_s = run_operation(combined, op, mat)
+    try:
+        rows, compute_s = compute_op_and_count(combined, op, mat)
+    except Exception:
+        rows, compute_s = run_operation(combined, op, mat)
     if op == "groupby":
         # For groupby, interpret the counted rows as number of output groups
         return Result(
@@ -390,13 +395,13 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
             groups=rows,
         )
     return Result(
-        backend=backend,
+                backend=backend,
         op=op,
         read_s=read_s,
         compute_s=compute_s,
-        rows=rows,
-        used_cores=used,
-        version=ver,
+                rows=rows,
+                used_cores=used,
+                version=ver,
         groups=None,
     )
 
