@@ -87,7 +87,6 @@ try:
         check_available as utils_check_available,
         format_fixed as utils_format_fixed,
         Backends as ALL_BACKENDS,
-        write_fixed_markdown as utils_write_fixed_markdown,
     )
 except Exception:
     # Allow running as a standalone script
@@ -104,7 +103,6 @@ except Exception:
         check_available as utils_check_available,
         format_fixed as utils_format_fixed,
         Backends as ALL_BACKENDS,
-        write_fixed_markdown as utils_write_fixed_markdown,
     )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -114,6 +112,19 @@ REPORTS.mkdir(parents=True, exist_ok=True)
 OUT = REPORTS / "billion_row_challenge.md"
 
 Backends = ALL_BACKENDS
+
+
+# Try to import mdreport for standardized Markdown writing
+try:  # First attempt: assume package available on sys.path
+    from mdreport import Report as _MdReport  # type: ignore
+except Exception:
+    try:
+        _src = ROOT / "src"
+        if str(_src) not in sys.path:
+            sys.path.insert(0, str(_src))
+        from mdreport import Report as _MdReport  # type: ignore
+    except Exception:  # Fallback shim: define a tiny wrapper using utils formatter
+        _MdReport = None  # type: ignore
 
 
 def _chunks_out_dir(rows_per_chunk: int) -> Path:
@@ -472,7 +483,7 @@ def _system_info_lines() -> List[str]:
 
 
 def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str], *, append: bool = False, title_suffix: str = "", input_rows_override: Optional[int] = None) -> None:
-    """Write a fixed-width Markdown report via shared markdown helpers."""
+    """Write a fixed-width Markdown report via mdreport if available (fallback to utils)."""
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
     op_val = results[0].op if results else "-"
     include_groups = any(getattr(r, "groups", None) is not None for r in results)
@@ -501,18 +512,32 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         suffix_lines.extend(["```", ""])
         suffix = suffix_lines
     out_path = Path(md_out) if md_out else OUT
-    if append and out_path.exists():
-        existing = out_path.read_text()
-        out_path.write_text(existing + "\n\n")
-    utils_write_fixed_markdown(
-        out_path=out_path,
-        title="Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""),
-        headers=headers,
-        rows=rows,
-        preface_lines=preface,
-        right_align_from=3,
-        suffix_lines=suffix,
-    )
+    if _MdReport is not None:
+        rpt = _MdReport(out_path)
+        rpt.title("Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""))
+        rpt.preface(preface)
+        rpt.table(headers, rows, align_from=3, style="fixed")
+        if suffix:
+            rpt.suffix(suffix)
+        rpt.write(append=append)
+    else:
+        # Fallback to existing utils writer if mdreport is not importable
+        if append and out_path.exists():
+            existing = out_path.read_text()
+            out_path.write_text(existing + "\n\n")
+        try:
+            from scripts.utils import write_fixed_markdown as _write  # type: ignore
+        except Exception:
+            from utils import write_fixed_markdown as _write  # type: ignore
+        _write(
+            out_path=out_path,
+            title="Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""),
+            headers=headers,
+            rows=rows,
+            preface_lines=preface,
+            right_align_from=3,
+            suffix_lines=suffix,
+        )
 
 def main():
     args = parse_arguments()
