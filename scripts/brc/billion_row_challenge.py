@@ -216,17 +216,22 @@ def parse_arguments():
 
 
 def resolve_chunks(args) -> List[Path]:
-    """Resolve chunk paths from args.
+    """Resolve chunk paths from args (parquet-only).
 
-    If ``--data-glob`` is provided, expand it to a list of existing files and
-    fail if none found. Otherwise, generate size-specific CSV chunks on demand.
+    - If ``--data-glob`` is provided, expand it to existing files and ensure all
+      are Parquet. Fail if none found or any non-parquet files are present.
+    - If no glob is provided, generate size-specific CSV chunks on demand is
+      no longer supported; instruct the user to provide Parquet via --data-glob.
     """
     if args.data_glob:
         paths = existing_chunks(args.data_glob)
         if not paths:
             raise SystemExit(f"No files matched --data-glob '{args.data_glob}'")
+        non_parquet = [p for p in paths if p.suffix.lower() != ".parquet"]
+        if non_parquet:
+            raise SystemExit("BRC is parquet-only now. Please provide a parquet glob (e.g., data/brc_*/**/*.parquet)")
         return paths
-    return ensure_chunks(args.rows_per_chunk, args.num_chunks)
+    raise SystemExit("BRC no longer generates CSV; please use --data-glob with parquet files.")
 
 
 
@@ -414,13 +419,13 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
             groups=rows,
         )
     return Result(
-                backend=backend,
+        backend=backend,
         op=op,
         read_s=read_s,
         compute_s=compute_s,
-                rows=rows,
-                used_cores=used,
-                version=ver,
+        rows=rows,
+        used_cores=used,
+        version=ver,
         groups=None,
     )
 
