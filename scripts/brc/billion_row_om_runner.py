@@ -169,7 +169,6 @@ def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
 
     - If ``data_glob`` is provided and points at Parquet, read footer metadata
       for exact row counts.
-    - If the files are CSV, approximate by counting lines minus header.
     - If no glob is provided, return the intended ``rows`` as a proxy.
     """
     if data_glob:
@@ -181,10 +180,7 @@ def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
             try:
                 count += int(_pq.ParquetFile(p).metadata.num_rows)
             except Exception:
-                # Fallback: approximate by counting lines minus header for CSV
-                if p.lower().endswith('.csv'):
-                    with open(p, 'r') as f:
-                        count += max(0, sum(1 for _ in f) - 1)
+                pass
         return count
     return rows
 
@@ -204,8 +200,8 @@ def _parquet_glob(size: int) -> str:
         return str(scales_dir / "*.parquet")
     return str(ROOT / f"data/brc_{size}" / "*.parquet")
 def _csv_glob(size: int) -> str:
-    """Return a glob for CSV chunks at ``size`` (generated on demand)."""
-    return str(ROOT / f"data/brc_{size}" / "*.csv")
+    """CSV is no longer supported; kept for compatibility but unused."""
+    return ""
 
 
 
@@ -215,15 +211,8 @@ def _size_dir(size: int) -> Path:
 
 
 def _convert_csv_to_parquet_in_dir(dir_path: Path) -> None:
-    """Create sibling Parquet files next to each CSV (idempotent)."""
-    import glob as _glob
-    import pandas as _pd  # type: ignore
-    for c in _glob.glob(str(dir_path / "*.csv")):
-        p_out = Path(c).with_suffix(".parquet")
-        if p_out.exists():
-            continue
-        df = _pd.read_csv(c)
-        df.to_parquet(p_out, index=False)
+    """Deprecated: CSV not supported for BRC. No-op."""
+    return
 
 
 def _ensure_parquet_for_size(size: int) -> None:
@@ -236,9 +225,7 @@ def _ensure_parquet_for_size(size: int) -> None:
         return
     if any(dir_path.glob("*.parquet")):
         return
-    if size > 1_000_000:
-        return
-    _convert_csv_to_parquet_in_dir(dir_path)
+    return
 
 
 
@@ -391,20 +378,7 @@ def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
             source="parquet",
             operation=OPERATION,
         )
-    cg = _csv_glob(size)  # Fallback to generated CSV when Parquet not present
-    if _has_matches(cg):
-        env = _env_for_backend(backend)
-        ok, rs, cs = _run_challenge(_cmd_for_glob(backend, cg), env, budget, backend)
-        return Entry(
-            backend=backend,
-            rows=size,
-            read_s=rs,
-            compute_s=cs,
-            ok=bool(ok),
-            input_rows=_count_input_rows(size, cg) if ok else None,
-            source="csv",
-            operation=OPERATION,
-        )
+    # No CSV fallback
     return run_once(backend, size, budget)
 
 
