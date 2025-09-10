@@ -52,6 +52,7 @@ def summarize_parquet(path: Path) -> Dict[str, object]:
 
 
 def to_markdown(items: List[Dict[str, object]]) -> str:
+    # Fallback textual rendering if mdreport is unavailable
     lines: List[str] = ["# Parquet inventory", ""]
     for it in items:
         lines.append(f"## {it['path']}")
@@ -73,8 +74,21 @@ def main() -> int:
     items = [summarize_parquet(p) for p in files]
     out = Path(args.md_out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(to_markdown(items))
-    print("Wrote", out)
+    try:
+        from mdreport import Report  # type: ignore
+    except Exception:
+        out.write_text(to_markdown(items))
+        print("Wrote", out)
+    else:
+        # Render a simple pipe table inventory
+        headers = ["path", "rows", "columns"]
+        rows: List[List[str]] = []
+        for it in items:
+            cols = ", ".join([f"{name}:{dtype}" for name, dtype in it["columns"]])  # type: ignore
+            rows.append([str(it["path"]), str(it["rows"]), cols])
+        rpt = Report(out)
+        rpt.title("Parquet inventory").table(headers, rows, style="pipe").write()
+        print("Wrote", out)
     return 0
 
 

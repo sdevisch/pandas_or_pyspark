@@ -165,9 +165,17 @@ def main():
             row.append(backend_to_results[backend].get(op_name, "-"))
         rows.append(row)
 
-    content = ["# Compatibility matrix", "", f"Generated at: {ts}", "", "```text", format_fixed_width(hdr, rows), "```", ""]
-    OUT.write_text("\n".join(content))
-    print("Wrote", OUT)
+    # Prefer mdreport for consistency; fallback to existing behavior
+    try:
+        from mdreport import Report  # type: ignore
+    except Exception:
+        content = ["# Compatibility matrix", "", f"Generated at: {ts}", "", "```text", format_fixed_width(hdr, rows), "```", ""]
+        OUT.write_text("\n".join(content))
+        print("Wrote", OUT)
+    else:
+        rpt = Report(OUT)
+        rpt.title("Compatibility matrix").preface([f"Generated at: {ts}", ""]).table(hdr, rows, align_from=1, style="fixed").write()
+        print("Wrote", OUT)
 
 
 if __name__ == "__main__":
