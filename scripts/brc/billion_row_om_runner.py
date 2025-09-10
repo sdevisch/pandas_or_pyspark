@@ -238,7 +238,24 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
     resulting report for read/compute timings.
     """
     env = _env_for_backend(backend)
-    cmd = _cmd_for_rows(backend, rows)
+    # Parquet-only: generate a tiny parquet if needed for this single run
+    try:
+        import pandas as _pd  # type: ignore
+        _tmp_dir = ROOT / "data" / f"brc_tmp_{rows}"
+        _tmp_dir.mkdir(parents=True, exist_ok=True)
+        _p = _tmp_dir / "generated.parquet"
+        if not _p.exists():
+            _rng = __import__("random").Random(42)
+            _pdf = _pd.DataFrame({
+                "id": list(range(rows)),
+                "x": [_rng.randint(-1000, 1000) for _ in range(rows)],
+                "y": [_rng.randint(-1000, 1000) for _ in range(rows)],
+                "cat": [_rng.choice(["x", "y", "z"]) for _ in range(rows)],
+            })
+            _pdf.to_parquet(str(_p), index=False)
+        cmd = _cmd_for_glob(backend, str(_tmp_dir / "*.parquet"))
+    except Exception:
+        cmd = _cmd_for_rows(backend, rows)
     ok, read_s, compute_s = _run_challenge(cmd, env, budget_s, backend)
     if not ok:
         return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
