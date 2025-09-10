@@ -92,9 +92,27 @@ def main():
             proceed = ok
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    content = ["# BRC scale runner", "", f"Generated at: {ts}", "", "```text", *fmt_fixed(headers, rows_out), "```", ""]
-    OUT.write_text("\n".join(content))
-    print("Wrote", OUT)
+    # Prefer mdreport for consistency; fallback to existing behavior
+    try:
+        from mdreport import Report  # type: ignore
+    except Exception:
+        content = [
+            "# BRC scale runner",
+            "",
+            f"Generated at: {ts}",
+            "",
+            "```text",
+            *fmt_fixed(headers, rows_out),
+            "```",
+            "",
+        ]
+        OUT.write_text("\n".join(content))
+        print("Wrote", OUT)
+    else:
+        rpt = Report(OUT)
+        rpt.title("BRC scale runner").preface([f"Generated at: {ts}", ""])\
+           .table(headers, rows_out, align_from=2, style="fixed").write()
+        print("Wrote", OUT)
 
 
 if __name__ == "__main__":

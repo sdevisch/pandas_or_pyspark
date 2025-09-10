@@ -159,18 +159,26 @@ def main():
         ]
         for r in results
     ]
-    content = [
-        "# Relational API demos",
-        "",
-        f"Generated at: {ts}",
-        "",
-        "```text",
-        *fmt_fixed(headers, rows),
-        "```",
-        "",
-    ]
-    OUT.write_text("\n".join(content))
-    print("Wrote", OUT)
+    # Prefer mdreport for consistency; fallback to existing behavior
+    try:
+        from mdreport import Report  # type: ignore
+    except Exception:
+        content = [
+            "# Relational API demos",
+            "",
+            f"Generated at: {ts}",
+            "",
+            "```text",
+            *fmt_fixed(headers, rows),
+            "```",
+            "",
+        ]
+        OUT.write_text("\n".join(content))
+        print("Wrote", OUT)
+    else:
+        rpt = Report(OUT)
+        rpt.title("Relational API demos").preface([f"Generated at: {ts}", ""]).table(headers, rows, align_from=3, style="fixed").write()
+        print("Wrote", OUT)
 
 
 if __name__ == "__main__":

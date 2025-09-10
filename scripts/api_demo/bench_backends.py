@@ -357,10 +357,35 @@ def main() -> int:
     for line in _format_fixed_width_table(["backend", "version", "load_s", "compute_s", "rows", "used_cores"], rows):
         print(line)
     if args.md_out:
-        content = "\n".join(_md_sections(args, avail, rows)) + "\n"
-        with open(args.md_out, "w") as f:
-            f.write(content)
-        print(f"\nWrote Markdown results to {args.md_out}")
+        # Prefer mdreport for consistency; fallback to existing behavior
+        try:
+            from mdreport import Report, system_info  # type: ignore
+        except Exception:
+            # fallback to previous content assembly
+            content = "\n".join(_md_sections(args, avail, rows)) + "\n"
+            with open(args.md_out, "w") as f:
+                f.write(content)
+            print(f"\nWrote Markdown results to {args.md_out}")
+        else:
+            rpt = Report(args.md_out)
+            rpt.title("unipandas benchmark").preface([
+                "## Run context",
+                f"- Data file: `{args.path}`",
+                f"- Ran at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                *system_info(),
+                f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}",
+                "",
+                "## Backend availability",
+                "",
+                "| backend | version | status |",
+                "|---|---|---|",
+                *[f"| {it['backend']} | {it['version']} | {'available' if it['available'] else 'unavailable'} |" for it in avail],
+                "",
+                "## Results (seconds)",
+                "",
+            ])
+            rpt.table(["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"], rows, align_from=2, style="fixed").write()
+            print(f"\nWrote Markdown results to {args.md_out}")
     return 0
 
 
