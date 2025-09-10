@@ -106,9 +106,27 @@ def main():
         rows_out.append([backend, sci(max_rows), f"{elapsed_at_max:.3f}"])
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    content = ["# 1-minute BRC runner", "", f"Generated at: {ts}", "", "```text", *fmt_fixed(headers, rows_out), "```", ""]
-    OUT.write_text("\n".join(content))
-    print("Wrote", OUT)
+    # Prefer mdreport for consistency; fallback to existing behavior
+    try:
+        from mdreport import Report  # type: ignore
+    except Exception:
+        content = [
+            "# 1-minute BRC runner",
+            "",
+            f"Generated at: {ts}",
+            "",
+            "```text",
+            *fmt_fixed(headers, rows_out),
+            "```",
+            "",
+        ]
+        OUT.write_text("\n".join(content))
+        print("Wrote", OUT)
+    else:
+        rpt = Report(OUT)
+        rpt.title("1-minute BRC runner").preface([f"Generated at: {ts}", ""])\
+           .table(headers, rows_out, align_from=1, style="fixed").write()
+        print("Wrote", OUT)
 
 
 if __name__ == "__main__":

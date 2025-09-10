@@ -464,8 +464,25 @@ def format_measurements_to_rows(steps: List[StepResult]) -> List[List[str]]:
 
 
 def write_report_rows(rows: List[List[str]]) -> None:
-    """Write the OM report using the central utilities."""
-    write_brc_om_report(OUT, rows)
+    """Write the OM report using mdreport if available, else central utils."""
+    try:
+        from mdreport import Report  # type: ignore
+    except Exception:
+        write_brc_om_report(OUT, rows)
+    else:
+        headers = [
+            "backend",
+            "rows(sci)",
+            "operation",
+            "source",
+            "read_s",
+            "compute_s",
+            "input_rows",
+            "ok",
+            "sanity_ok",
+        ]
+        rpt = Report(OUT)
+        rpt.title("Billion Row OM Runner").table(headers, rows, align_from=4, style="fixed").write()
 
 
 def main():
