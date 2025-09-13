@@ -163,6 +163,25 @@ def _ensure_smoke_csv() -> Path:
     return sample
 
 
+def _ensure_tiny_parquet(rows: int = 1000) -> str:
+    """Create a tiny Parquet dataset for BRC if missing; return glob."""
+    d = ROOT / "data" / f"brc_tmp_{rows}"
+    p = d / "generated.parquet"
+    if not p.exists():
+        import pandas as _pd  # local import
+        import random as _rnd
+        d.mkdir(parents=True, exist_ok=True)
+        rng = _rnd.Random(42)
+        pdf = _pd.DataFrame({
+            "id": list(range(rows)),
+            "x": [rng.randint(-1000, 1000) for _ in range(rows)],
+            "y": [rng.randint(-1000, 1000) for _ in range(rows)],
+            "cat": [rng.choice(["x", "y", "z"]) for _ in range(rows)],
+        })
+        pdf.to_parquet(str(p), index=False)
+    return str(d / "*.parquet")
+
+
 def append_section(report_path: Path, title: str, md_part: Path) -> None:
     """Append a titled section with content from a Markdown fragment file.
 
@@ -210,10 +229,11 @@ def run_demo_and_append() -> None:
         skipped.append("relational_bench")
 
     # 4) BRC small scaffold (write to smoke-specific file) with 30s budget total
-    # Use small generated CSV to avoid long runs; still demonstrate end-to-end.
+    # Parquet-only: use a tiny synthesized Parquet glob to avoid long runs.
     if time.perf_counter() < deadline:
+        tiny_glob = _ensure_tiny_parquet(1000)
         ok = run_command_timeout([
-            PY, str(BRC), "--rows-per-chunk", "1000", "--num-chunks", "1", "--operation", "groupby",
+            PY, str(BRC), "--data-glob", tiny_glob, "--operation", "groupby",
             "--md-out", str(ROOT / "reports" / "brc" / "billion_row_challenge_smoke.md"),
         ], timeout_s=min(30.0, max(1.0, deadline - time.perf_counter())))
         if not ok:
