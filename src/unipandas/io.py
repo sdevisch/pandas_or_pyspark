@@ -10,6 +10,7 @@ from .backend import (
     import_polars,
     import_duckdb,
     import_numpy,
+    import_numba,
 )
 from .frame import Frame
 
@@ -43,6 +44,10 @@ def read_csv(path: str, **kwargs: Any) -> Frame:
         # Simple CSV via pandas then expose underlying numpy array to Frame
         pd = import_pandas()
         return Frame(pd.read_csv(path, **kwargs).values)
+    if backend == "numba":
+        # Storage remains pandas; computation may be accelerated at op level
+        pd = import_pandas()
+        return Frame(pd.read_csv(path, **kwargs))
     raise RuntimeError(f"Unknown backend {backend}")
 
 
@@ -73,6 +78,9 @@ def read_parquet(path: str, **kwargs: Any) -> Frame:
         # Read via pandas then expose ndarray
         pd = import_pandas()
         return Frame(pd.read_parquet(path, **kwargs).values)
+    if backend == "numba":
+        pd = import_pandas()
+        return Frame(pd.read_parquet(path, **kwargs))
     raise RuntimeError(f"Unknown backend {backend}")
 
 

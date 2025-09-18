@@ -79,7 +79,10 @@ def can_process_within(backend: str, rows: int, budget_s: float, operation: str,
             glob_arg = str(_tmp_dir / "*.parquet")
         except Exception:
             glob_arg = None
-    cmd = [PY, str(SCRIPT), "--data-glob", glob_arg, "--operation", operation] if glob_arg else [PY, str(SCRIPT), "--operation", operation]
+    if glob_arg:
+        cmd = [PY, str(SCRIPT), "--data-glob", glob_arg, "--operation", operation, "--only-backend", backend]
+    else:
+        cmd = [PY, str(SCRIPT), "--operation", operation, "--only-backend", backend]
     start = time.perf_counter()
     try:
         subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=budget_s)

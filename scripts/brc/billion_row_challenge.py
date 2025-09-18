@@ -378,8 +378,8 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
     """Run the full read+compute pipeline for a single backend and return timings."""
     configure_backend(backend)
     combined, read_s, _ = measure_read(chunks, backend)
-        used = _used_cores_for_backend(backend)
-        ver = get_backend_version(backend)
+    used = _used_cores_for_backend(backend)
+    ver = get_backend_version(backend)
     # materialize mode from CLI via environment captured upstream; fall back to head
     import os as __os
     mat = __os.environ.get("BRC_MATERIALIZE", "head")
@@ -400,13 +400,13 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
             groups=rows,
         )
     return Result(
-                backend=backend,
+        backend=backend,
         op=op,
         read_s=read_s,
         compute_s=compute_s,
-                rows=rows,
-                used_cores=used,
-                version=ver,
+        rows=rows,
+        used_cores=used,
+        version=ver,
         groups=None,
     )
 
