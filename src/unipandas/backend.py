@@ -10,6 +10,7 @@ Supported backends:
 - "polars": Polars DataFrame
 - "duckdb": DuckDB (reads into pandas for unified ops)
 - "numpy": Experimental NumPy-backed frames (array-table shim)
+ - "numba": Experimental Numba-accelerated Python (uses pandas storage)
 """
 
 from __future__ import annotations
@@ -60,6 +61,8 @@ def _detect_backend_by_environment() -> Optional[str]:
         return "duckdb"
     if normalized in {"numpy", "np"}:
         return "numpy"
+    if normalized in {"numba"}:
+        return "numba"
     return None
 
 
@@ -160,6 +163,8 @@ def configure_backend(name: str) -> Backend:
         value = "duckdb"
     elif normalized in {"numpy", "np"}:
         value = "numpy"
+    elif normalized in {"numba"}:
+        value = "numba"
     else:
         raise ValueError(
             f"Unknown backend '{name}'. Valid options are 'pandas', 'dask', 'pyspark', 'polars', 'duckdb', 'numpy'."
@@ -218,6 +223,13 @@ def import_numpy():
     return mod
 
 
+def import_numba():
+    mod = _import_optional("numba")
+    if mod is None:
+        raise RuntimeError("numba is not installed. Please install 'numba'.")
+    return mod
+
+
 def is_pandas() -> bool:
     return current_backend_name() == "pandas"
 
@@ -240,6 +252,10 @@ def is_duckdb() -> bool:
 
 def is_numpy() -> bool:
     return current_backend_name() == "numpy"
+
+
+def is_numba() -> bool:
+    return current_backend_name() == "numba"
 
 
 def infer_backend_from_object(obj) -> Optional[str]:

@@ -17,7 +17,7 @@ REPORTS = ROOT / "reports" / "api_demo"
 REPORTS.mkdir(exist_ok=True)
 OUT = REPORTS / "compatibility.md"
 
-Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
+Backends = ["pandas", "dask", "pyspark", "polars", "duckdb", "numpy", "numba"]
 
 
 def make_dataset() -> Path:
