@@ -6,7 +6,7 @@ from pathlib import Path
 from datetime import datetime
 
 
-Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
+Backends = ["pandas", "dask", "pyspark", "polars", "duckdb", "numpy"]
 
 
 def get_backend_version(backend: str) -> Optional[str]:
@@ -31,6 +31,10 @@ def get_backend_version(backend: str) -> Optional[str]:
             import duckdb  # type: ignore
 
             return getattr(duckdb, "__version__", None)
+        if backend == "numpy":
+            import numpy as np  # type: ignore
+
+            return getattr(np, "__version__", None)
     except Exception:
         return None
     return None
@@ -71,6 +75,8 @@ def used_cores_for_backend(backend: str) -> Optional[int]:
         if backend == "duckdb":
             # DuckDB runs in-process
             return 1
+        if backend == "numpy":
+            return 1
     except Exception:
         return None
     return None
@@ -88,6 +94,8 @@ def check_available(backend: str) -> bool:
             __import__("polars")
         elif backend == "duckdb":
             __import__("duckdb")
+        elif backend == "numpy":
+            __import__("numpy")
         else:
             return False
         return True

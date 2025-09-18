@@ -71,13 +71,29 @@ class Frame:
         else:
             cols = list(columns)
         # Many backends support direct column projection via obj[cols]
-        result = self._obj[cols]
+        # NumPy backend: treat 2D ndarray with column indices
+        if self._backend == "numpy":
+            try:
+                import numpy as _np  # type: ignore
+
+                arr = self._obj
+                # assume columns are integer indices in numpy mode
+                idxs = cols if all(isinstance(c, int) for c in cols) else list(range(len(cols)))
+                result = arr[:, idxs]
+            except Exception:
+                result = self._obj
+        else:
+            result = self._obj[cols]
         return Frame(result)
 
     def query(self, expr: str) -> "Frame":
         """Filter rows using a pandas-like query expression string."""
         # All supported backends expose pandas-like .query in this unified API
-        result = self._obj.query(expr)
+        if self._backend == "numpy":
+            # Unsupported; no-op for numpy shim
+            result = self._obj
+        else:
+            result = self._obj.query(expr)
         return Frame(result)
 
     def assign(self, **kwargs: Union[Any, Callable[[Any], Any]]) -> "Frame":
@@ -85,7 +101,10 @@ class Frame:
 
         The behavior mirrors pandas' DataFrame.assign.
         """
-        result = self._obj.assign(**kwargs)
+        if self._backend == "numpy":
+            result = self._obj  # unsupported in numpy shim
+        else:
+            result = self._obj.assign(**kwargs)
         return Frame(result)
 
     def merge(
@@ -101,14 +120,17 @@ class Frame:
 
         Parameters mirror pandas.DataFrame.merge for familiarity.
         """
-        result = self._obj.merge(
+        if self._backend == "numpy":
+            result = self._obj  # unsupported in numpy shim
+        else:
+            result = self._obj.merge(
             right.obj,
             how=how,
             on=on,
             left_on=left_on,
             right_on=right_on,
             suffixes=suffixes,
-        )
+            )
         return Frame(result)
 
     def groupby(self, by: Union[str, Sequence[str]]) -> "Grouped":
@@ -117,7 +139,10 @@ class Frame:
 
     def head(self, n: int = 5) -> "Frame":
         """Return the first ``n`` rows as a new `Frame` (lazy where supported)."""
-        result = self._obj.head(n)
+        if self._backend == "numpy":
+            result = self._obj[:n]
+        else:
+            result = self._obj.head(n)
         return Frame(result)
 
     # ----- Additional commonly compatible ops -----
@@ -134,6 +159,8 @@ class Frame:
                 result = self._obj.sort(by, descending=descending)
             except Exception:
                 result = self._obj  # graceful no-op on mismatch
+        elif self._backend == "numpy":
+            result = self._obj  # unsupported in numpy shim
         else:
             result = self._obj.sort_values(by=by, ascending=ascending)
         return Frame(result)
@@ -148,6 +175,8 @@ class Frame:
                 result = self._obj.drop_nulls(subset=subset)
             except Exception:
                 result = self._obj
+        elif self._backend == "numpy":
+            result = self._obj  # unsupported in numpy shim
         else:
             result = self._obj.dropna(subset=subset)
         return Frame(result)
@@ -162,6 +191,8 @@ class Frame:
                 result = self._obj.fill_null(value)
             except Exception:
                 result = self._obj
+        elif self._backend == "numpy":
+            result = self._obj  # unsupported in numpy shim
         else:
             result = self._obj.fillna(value)
         return Frame(result)
@@ -177,6 +208,8 @@ class Frame:
                 result = self._obj.rename(mapping)
             except Exception:
                 result = self._obj
+        elif self._backend == "numpy":
+            result = self._obj
         else:
             result = self._obj.rename(columns=mapping)
         return Frame(result)
@@ -199,6 +232,8 @@ class Frame:
                     result = self._obj.with_columns(exprs)
                 except Exception:
                     result = self._obj
+        elif self._backend == "numpy":
+            result = self._obj
         else:
             result = self._obj.astype(dtype_map)
         return Frame(result)
@@ -219,6 +254,8 @@ class Frame:
         if self._backend == "polars":
             # Polars exposes to_pandas
             return self._obj.to_pandas()
+        if self._backend == "numpy":
+            return self._obj  # already ndarray
         raise RuntimeError(f"Unknown backend {self._backend}")
 
     def to_backend(self) -> Any:

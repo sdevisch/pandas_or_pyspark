@@ -9,6 +9,7 @@ from .backend import (
     import_pyspark_pandas,
     import_polars,
     import_duckdb,
+    import_numpy,
 )
 from .frame import Frame
 
@@ -38,6 +39,10 @@ def read_csv(path: str, **kwargs: Any) -> Frame:
             return Frame(rel.to_df())
         finally:
             con.close()
+    if backend == "numpy":
+        # Simple CSV via pandas then expose underlying numpy array to Frame
+        pd = import_pandas()
+        return Frame(pd.read_csv(path, **kwargs).values)
     raise RuntimeError(f"Unknown backend {backend}")
 
 
@@ -64,6 +69,10 @@ def read_parquet(path: str, **kwargs: Any) -> Frame:
             return Frame(rel.to_df())
         finally:
             con.close()
+    if backend == "numpy":
+        # Read via pandas then expose ndarray
+        pd = import_pandas()
+        return Frame(pd.read_parquet(path, **kwargs).values)
     raise RuntimeError(f"Unknown backend {backend}")
 
 
