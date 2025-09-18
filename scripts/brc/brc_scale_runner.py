@@ -19,7 +19,14 @@ OUT = REPORTS / "brc_scale.md"
 PY = sys.executable or "python3"
 SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 
-Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]
+# Canonical backends list from scripts/utils.py
+try:
+    from scripts.utils import Backends as Backends  # type: ignore
+except Exception:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.append(str(_Path(__file__).resolve().parents[1]))
+    from utils import Backends as Backends  # type: ignore
 SCALES = [1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 
 
