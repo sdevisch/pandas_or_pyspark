@@ -88,6 +88,9 @@ def _used_cores_for_backend(backend: str) -> Optional[int]:
 def run_bench(datasets: Dict[str, Path]) -> List[Result]:
     results: List[Result] = []
     for backend in Backends:
+        # Skip experimental backends that don't support DataFrame-like relational ops yet
+        if backend in {"numpy", "numba"}:
+            continue
         if not utils_check_available(backend):
             continue
         configure_backend(backend)
