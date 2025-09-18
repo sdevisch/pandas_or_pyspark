@@ -59,9 +59,27 @@ def sci(n: int) -> str:
 def can_process_within(backend: str, rows: int, budget_s: float, operation: str, data_glob: str | None) -> tuple[bool, float]:
     env = os.environ.copy()
     env["UNIPANDAS_BACKEND"] = backend
-    cmd = [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", operation]
-    if data_glob:
-        cmd = [PY, str(SCRIPT), "--data-glob", data_glob, "--operation", operation]
+    # BRC is parquet-only: if no data_glob provided, synthesize a tiny parquet
+    glob_arg = data_glob
+    if not glob_arg:
+        try:
+            import pandas as _pd  # type: ignore
+            _tmp_dir = ROOT / "data" / f"brc_tmp_{rows}"
+            _tmp_dir.mkdir(parents=True, exist_ok=True)
+            _p = _tmp_dir / "generated.parquet"
+            if not _p.exists():
+                _rng = __import__("random").Random(42)
+                _pdf = _pd.DataFrame({
+                    "id": list(range(rows)),
+                    "x": [_rng.randint(-1000, 1000) for _ in range(rows)],
+                    "y": [_rng.randint(-1000, 1000) for _ in range(rows)],
+                    "cat": [_rng.choice(["x", "y", "z"]) for _ in range(rows)],
+                })
+                _pdf.to_parquet(str(_p), index=False)
+            glob_arg = str(_tmp_dir / "*.parquet")
+        except Exception:
+            glob_arg = None
+    cmd = [PY, str(SCRIPT), "--data-glob", glob_arg, "--operation", operation] if glob_arg else [PY, str(SCRIPT), "--operation", operation]
     start = time.perf_counter()
     try:
         subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=budget_s)

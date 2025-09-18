@@ -160,6 +160,12 @@ Quick start
    `export PYARROW_IGNORE_TIMEZONE=1`
 2) Quick API demo across backends:
    `python scripts/api_demo/bench_backends.py data/example.csv --assign --query "a > 0" --groupby cat --md-out reports/api_demo/quick.md`
+
+3) Billion Row Challenge (BRC): Parquet-only
+   - Provide Parquet glob(s): `--data-glob "data/brc_scales/parquet_1000000/*.parquet"`
+   - CSV inputs are no longer supported for BRC.
+
+Reporting is standardized via a small internal module (`mdreport`) that writes Markdown under `reports/` at the repo root.
 3) Relational workloads (join/concat):
    `python scripts/api_demo/relational_bench.py`
 4) Compatibility matrix:

@@ -135,19 +135,11 @@ def _chunks_out_dir(rows_per_chunk: int) -> Path:
 
 
 def _write_rows_csv(path: Path, rows: int, base: int, rnd) -> None:
-    import csv
-    with path.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["id", "x", "y", "cat"])
-        for j in range(rows):
-            w.writerow([base + j, rnd.randint(-1000, 1000), rnd.randint(-1000, 1000), rnd.choice(["x", "y", "z"])])
+    return
 
 
 def _maybe_generate_chunk(out_dir: Path, rows_per_chunk: int, i: int, rnd) -> Path:
-    p = out_dir / f"brc_{rows_per_chunk}_{i:04d}.csv"
-    if not p.exists():
-        _write_rows_csv(p, rows_per_chunk, i * rows_per_chunk, rnd)
-    return p
+    return out_dir / f"brc_{rows_per_chunk}_{i:04d}.csv"
 
 
 def ensure_chunks(rows_per_chunk: int, num_chunks: int, seed: int = 123) -> List[Path]:
@@ -243,30 +235,13 @@ def resolve_chunks(args) -> List[Path]:
 
 
 def _compute_input_rows_general(chunks: List[Path], args) -> Optional[int]:
-    """Best-effort total input rows across chunks.
-
-    Prefers Parquet metadata when available; otherwise, if chunks were
-    generated in-process (no --data-glob), uses rows_per_chunk * num_chunks.
-    Returns None for unknown external CSVs.
-    """
-    parquet_rows = _total_rows_from_parquet(chunks)
-    if parquet_rows is not None:
-        return parquet_rows
-    try:
-        # If we generated CSVs ourselves (no data_glob), we know exact counts
-        if not getattr(args, "data_glob", None):
-            return int(getattr(args, "rows_per_chunk", 0)) * int(getattr(args, "num_chunks", 0))
-    except Exception:
-        pass
-    return None
+    """Total input rows across chunks (Parquet-only)."""
+    return _total_rows_from_parquet(chunks)
 
 
 def _detect_source(chunks: List[Path]) -> str:
-    """Return 'parquet' if any chunk is .parquet, else 'csv'."""
-    for p in chunks:
-        if p.suffix.lower() == ".parquet":
-            return "parquet"
-    return "csv"
+    """Parquet-only source label for reports."""
+    return "parquet"
 
 
 def _total_rows_from_parquet(chunks: List[Path]) -> Optional[int]:
@@ -403,8 +378,8 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
     """Run the full read+compute pipeline for a single backend and return timings."""
     configure_backend(backend)
     combined, read_s, _ = measure_read(chunks, backend)
-    used = _used_cores_for_backend(backend)
-    ver = get_backend_version(backend)
+        used = _used_cores_for_backend(backend)
+        ver = get_backend_version(backend)
     # materialize mode from CLI via environment captured upstream; fall back to head
     import os as __os
     mat = __os.environ.get("BRC_MATERIALIZE", "head")

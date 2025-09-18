@@ -138,7 +138,7 @@ class Entry:
     compute_s: Optional[float]
     ok: bool
     input_rows: Optional[int] = None
-    source: str = "generated"  # "parquet" | "csv" | "generated"
+    source: str = "generated"  # "parquet" | "generated"
     operation: str = OPERATION
 
 
@@ -169,23 +169,12 @@ def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
 
     - If ``data_glob`` is provided and points at Parquet, read footer metadata
       for exact row counts.
-    - If the files are CSV, approximate by counting lines minus header.
     - If no glob is provided, return the intended ``rows`` as a proxy.
     """
     if data_glob:
         import glob as _glob
-        import os as _os
         import pyarrow.parquet as _pq  # type: ignore
-        count = 0
-        for p in _glob.glob(data_glob):
-            try:
-                count += int(_pq.ParquetFile(p).metadata.num_rows)
-            except Exception:
-                # Fallback: approximate by counting lines minus header for CSV
-                if p.lower().endswith('.csv'):
-                    with open(p, 'r') as f:
-                        count += max(0, sum(1 for _ in f) - 1)
-        return count
+        return sum(int(_pq.ParquetFile(p).metadata.num_rows) for p in _glob.glob(data_glob))
     return rows
 
 # ---------------------------------------------------------------------------
@@ -204,8 +193,8 @@ def _parquet_glob(size: int) -> str:
         return str(scales_dir / "*.parquet")
     return str(ROOT / f"data/brc_{size}" / "*.parquet")
 def _csv_glob(size: int) -> str:
-    """Return a glob for CSV chunks at ``size`` (generated on demand)."""
-    return str(ROOT / f"data/brc_{size}" / "*.csv")
+    """CSV not supported for BRC (kept for compatibility; returns empty)."""
+    return ""
 
 
 
@@ -215,15 +204,8 @@ def _size_dir(size: int) -> Path:
 
 
 def _convert_csv_to_parquet_in_dir(dir_path: Path) -> None:
-    """Create sibling Parquet files next to each CSV (idempotent)."""
-    import glob as _glob
-    import pandas as _pd  # type: ignore
-    for c in _glob.glob(str(dir_path / "*.csv")):
-        p_out = Path(c).with_suffix(".parquet")
-        if p_out.exists():
-            continue
-        df = _pd.read_csv(c)
-        df.to_parquet(p_out, index=False)
+    """Deprecated: CSV not supported for BRC."""
+    return
 
 
 def _ensure_parquet_for_size(size: int) -> None:
@@ -256,7 +238,24 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
     resulting report for read/compute timings.
     """
     env = _env_for_backend(backend)
-    cmd = _cmd_for_rows(backend, rows)
+    # Parquet-only: generate a tiny parquet if needed for this single run
+    try:
+        import pandas as _pd  # type: ignore
+        _tmp_dir = ROOT / "data" / f"brc_tmp_{rows}"
+        _tmp_dir.mkdir(parents=True, exist_ok=True)
+        _p = _tmp_dir / "generated.parquet"
+        if not _p.exists():
+            _rng = __import__("random").Random(42)
+            _pdf = _pd.DataFrame({
+                "id": list(range(rows)),
+                "x": [_rng.randint(-1000, 1000) for _ in range(rows)],
+                "y": [_rng.randint(-1000, 1000) for _ in range(rows)],
+                "cat": [_rng.choice(["x", "y", "z"]) for _ in range(rows)],
+            })
+            _pdf.to_parquet(str(_p), index=False)
+        cmd = _cmd_for_glob(backend, str(_tmp_dir / "*.parquet"))
+    except Exception:
+        cmd = _cmd_for_rows(backend, rows)
     ok, read_s, compute_s = _run_challenge(cmd, env, budget_s, backend)
     if not ok:
         return Entry(backend=backend, rows=rows, read_s=None, compute_s=None, ok=False)
@@ -391,20 +390,7 @@ def _entry_for_backend_size(backend: str, size: int, budget: float) -> Entry:
             source="parquet",
             operation=OPERATION,
         )
-    cg = _csv_glob(size)  # Fallback to generated CSV when Parquet not present
-    if _has_matches(cg):
-        env = _env_for_backend(backend)
-        ok, rs, cs = _run_challenge(_cmd_for_glob(backend, cg), env, budget, backend)
-        return Entry(
-            backend=backend,
-            rows=size,
-            read_s=rs,
-            compute_s=cs,
-            ok=bool(ok),
-            input_rows=_count_input_rows(size, cg) if ok else None,
-            source="csv",
-            operation=OPERATION,
-        )
+    # No CSV fallback; if no parquet, run generation-based once
     return run_once(backend, size, budget)
 
 
@@ -416,7 +402,7 @@ def _sanity_check(entry: Entry) -> bool:
         return False
     if entry.compute_s is not None and entry.compute_s < 0:
         return False
-    if entry.source in ("parquet", "csv") and entry.ok and (entry.input_rows is None or entry.input_rows <= 0):
+    if entry.source == "parquet" and entry.ok and (entry.input_rows is None or entry.input_rows <= 0):
         return False
     if entry.source == "generated" and entry.input_rows is not None and entry.input_rows != entry.rows:
         return False

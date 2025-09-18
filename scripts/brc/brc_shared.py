@@ -4,23 +4,19 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 import time
 
-from unipandas.io import read_csv, read_parquet
+from unipandas.io import read_parquet
 from unipandas.frame import Frame
 
 
 def read_frames_for_backend(chunks: List[Path], backend: str) -> List[Frame]:
-    """Read chunk files into backend dataframes and wrap as ``Frame``.
+    """Read Parquet chunk files into backend dataframes and wrap as ``Frame``.
 
-    The IO path supports both Parquet and CSV based on each chunk's file
-    extension.
+    Parquet-only enforcement: raises SystemExit if any non-parquet paths are provided.
     """
-    frames: List[Frame] = []
-    for p in chunks:
-        if p.suffix.lower() == ".parquet":
-            frames.append(read_parquet(str(p)))
-        else:
-            frames.append(read_csv(str(p)))
-    return frames
+    non_parquet = [p for p in chunks if p.suffix.lower() != ".parquet"]
+    if non_parquet:
+        raise SystemExit("BRC is parquet-only. Provide only .parquet files.")
+    return [read_parquet(str(p)) for p in chunks]
 
 
 def concat_frames(frames: List[Frame], backend: str) -> Frame:
