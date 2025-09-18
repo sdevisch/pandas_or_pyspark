@@ -16,6 +16,15 @@ def read_frames_for_backend(chunks: List[Path], backend: str) -> List[Frame]:
     non_parquet = [p for p in chunks if p.suffix.lower() != ".parquet"]
     if non_parquet:
         raise SystemExit("BRC is parquet-only. Provide only .parquet files.")
+    # For experimental backends that don't support DataFrame-like ops, read via pandas
+    if backend in {"numpy", "numba"}:
+        import pandas as _pd  # type: ignore
+
+        frames: List[Frame] = []
+        for p in chunks:
+            pdf = _pd.read_parquet(str(p))
+            frames.append(Frame(pdf))
+        return frames
     return [read_parquet(str(p)) for p in chunks]
 
 
