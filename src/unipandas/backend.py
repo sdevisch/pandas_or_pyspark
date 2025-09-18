@@ -9,6 +9,7 @@ Supported backends:
 - "pyspark": pandas API on Spark (pyspark.pandas)
 - "polars": Polars DataFrame
 - "duckdb": DuckDB (reads into pandas for unified ops)
+- "numpy": Experimental NumPy-backed frames (array-table shim)
 """
 
 from __future__ import annotations
@@ -57,6 +58,8 @@ def _detect_backend_by_environment() -> Optional[str]:
         return "polars"
     if normalized in {"duckdb", "duck"}:
         return "duckdb"
+    if normalized in {"numpy", "np"}:
+        return "numpy"
     return None
 
 
@@ -155,9 +158,11 @@ def configure_backend(name: str) -> Backend:
         value = "polars"
     elif normalized in {"duckdb", "duck"}:
         value = "duckdb"
+    elif normalized in {"numpy", "np"}:
+        value = "numpy"
     else:
         raise ValueError(
-            f"Unknown backend '{name}'. Valid options are 'pandas', 'dask', 'pyspark'."
+            f"Unknown backend '{name}'. Valid options are 'pandas', 'dask', 'pyspark', 'polars', 'duckdb', 'numpy'."
         )
 
     global _CURRENT_BACKEND
@@ -206,6 +211,13 @@ def import_duckdb():
     return mod
 
 
+def import_numpy():
+    mod = _import_optional("numpy")
+    if mod is None:
+        raise RuntimeError("numpy is not installed. Please install 'numpy'.")
+    return mod
+
+
 def is_pandas() -> bool:
     return current_backend_name() == "pandas"
 
@@ -224,6 +236,10 @@ def is_polars() -> bool:
 
 def is_duckdb() -> bool:
     return current_backend_name() == "duckdb"
+
+
+def is_numpy() -> bool:
+    return current_backend_name() == "numpy"
 
 
 def infer_backend_from_object(obj) -> Optional[str]:
@@ -260,6 +276,14 @@ def infer_backend_from_object(obj) -> Optional[str]:
 
         if isinstance(obj, pl.DataFrame):
             return "polars"
+    except Exception:
+        pass
+
+    try:
+        import numpy as np  # type: ignore
+
+        if isinstance(obj, np.ndarray):
+            return "numpy"
     except Exception:
         pass
 
