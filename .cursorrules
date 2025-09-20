@@ -19,3 +19,4 @@ rules:
   - "Add unit tests for each function."
   - "Follow PEP 8 conventions unless they conflict with readability."
   - "Break large tasks into a series of small, composable functions."
+  - "Maintain ≥ 90% unit test coverage; CI must fail under 90%."
