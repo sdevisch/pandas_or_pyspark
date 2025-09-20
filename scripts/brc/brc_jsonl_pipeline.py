@@ -37,7 +37,7 @@ def main() -> int:
     ]
     subprocess.run(cmd1, check=True, env=env)
 
-    # 2) Render Markdown from JSONL
+    # 2) Render Markdown from JSONL (main or smoke determined inside reporter/challenge logic)
     cmd2 = [
         "python",
         "scripts/reports/brc_report_from_jsonl.py",

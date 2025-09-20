@@ -1,22 +1,64 @@
-# Billion Row Challenge (scaffold) - filter
+# Billion Row Challenge (scaffold) - groupby
 
-Generated at: 2025-09-08 18:21:21
+Generated at: 2025-09-20 08:21:29
 
-- operation: filter
+- operation: groupby
 - materialize: count
 - num_chunks: 1
-- total_bytes: 15672
-- source: csv
-- input_rows: -
+- total_bytes: 9547
+- source: parquet
+- input_rows: 1000
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
 - CPU cores: 11
 
 ```text
-backend  version       op  read_s  compute_s  rows  used_cores
--------  --------  ------  ------  ---------  ----  ----------
-pandas   2.2.2     filter  0.0019     0.0027   252           1
-dask     2024.5.1  filter  0.0037     0.0046   252          11
-pyspark  3.5.1     filter  4.0513     0.3509   252          11
-polars   1.33.0    filter  0.0036     0.0013   252           1
-duckdb   1.3.2     filter  0.0145     0.0008   252           1
+backend  version   op       read_s  compute_s  rows  used_cores  groups
+-------  --------  -------  ------  ---------  ----  ----------  ------
+pandas   2.2.2     groupby  0.0018     0.0004  1000           1       3
+dask     2024.5.1  groupby  0.0028     0.0131  1000          11       3
+pyspark  3.5.1     groupby  2.8804     1.1445  1000          11       3
+polars   1.33.0    groupby  0.0045     0.0006  1000           1       3
+duckdb   1.3.2     groupby  0.0083     0.0005  1000           1       3
+numpy    1.26.4    groupby  0.0015     0.0004  1000           1       3
+numba    0.60.0    groupby  0.0011     0.0006  1000           1       3
+```
+
+Groupby result preview (by backend):
+
+```text
+backend  cat   x                     y
+-------  ---  --  --------------------
+pandas   x     1  -0.11246200607902736
+pandas   y    32   0.28695652173913044
+pandas   z    -3   0.24539877300613497
+backend  cat   x                     y
+-------  ---  --  --------------------
+dask     x     1  -0.11246200607902736
+dask     y    32   0.28695652173913044
+dask     z    -3   0.24539877300613497
+backend  cat   x                     y
+-------  ---  --  --------------------
+pyspark  x     1  -0.11246200607902736
+pyspark  y    32   0.28695652173913044
+pyspark  z    -3   0.24539877300613497
+backend  cat   x                     y
+-------  ---  --  --------------------
+polars   x     1  -0.11246200607902736
+polars   y    32   0.28695652173913044
+polars   z    -3   0.24539877300613497
+backend  cat   x                     y
+-------  ---  --  --------------------
+duckdb   x     1  -0.11246200607902736
+duckdb   y    32   0.28695652173913044
+duckdb   z    -3   0.24539877300613497
+backend  cat   x                     y
+-------  ---  --  --------------------
+numpy    x     1  -0.11246200607902736
+numpy    y    32   0.28695652173913044
+numpy    z    -3   0.24539877300613497
+backend  cat   x                     y
+-------  ---  --  --------------------
+numba    x     1  -0.11246200607902736
+numba    y    32   0.28695652173913044
+numba    z    -3   0.24539877300613497
 ```
