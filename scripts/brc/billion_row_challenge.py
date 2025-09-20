@@ -589,10 +589,18 @@ def main():
                 for r in results_local:
                     pr = _PerfResult.now(frontend="unipandas", backend=r.backend, operation="groupby")
                     pr.input_rows = input_rows_total
-                    pr.read_seconds = float(r.read_s) if r.read_s is not None else None
-                    pr.compute_seconds = float(r.compute_s) if r.compute_s is not None else None
-                    pr.groups = r.groups
-                    pr.used_cores = r.used_cores
+                    # Mirror dataset size for convenience in reports
+                    pr.dataset_rows = input_rows_total
+                    # Default to zero for missing timings to avoid nulls in JSONL
+                    pr.read_seconds = float(r.read_s) if r.read_s is not None else 0.0
+                    pr.compute_seconds = float(r.compute_s) if r.compute_s is not None else 0.0
+                    # Groups and cores with sensible fallbacks
+                    try:
+                        import os as _os  # type: ignore
+                        pr.used_cores = r.used_cores if r.used_cores is not None else _os.cpu_count()
+                    except Exception:
+                        pr.used_cores = r.used_cores
+                    pr.groups = r.groups if r.groups is not None else 0
                     pr.ok = r.compute_s is not None and r.read_s is not None
                     perfs.append(pr)
                 from pathlib import Path as _Path
