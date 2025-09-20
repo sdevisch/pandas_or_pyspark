@@ -1,6 +1,17 @@
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -p no:warnings"
 testpaths = ["tests"]
+filterwarnings = [
+  # Silence pandas-on-Spark advice warnings that are noisy in tests
+  "ignore::pyspark.pandas.utils.PandasAPIOnSparkAdviceWarning",
+  # Silence known deprecations triggered inside PySpark typing hints
+  "ignore:distutils Version classes are deprecated:DeprecationWarning:pyspark.pandas.typedef.typehints",
+  "ignore:Converting `np.character` to a dtype is deprecated:DeprecationWarning:pyspark.pandas.typedef.typehints",
+  # Silence PyArrow timezone env warning emitted on pandas-on-Spark import
+  "ignore::UserWarning:pyspark.pandas",
+  # Silence distutils Version deprecation inside pyspark.sql pandas utils
+  "ignore:distutils Version classes are deprecated:DeprecationWarning:pyspark.sql.pandas.utils",
+]
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
