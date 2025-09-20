@@ -10,24 +10,17 @@ import sys
 from typing import Any
 from pathlib import Path
 
-_SCRIPTS = Path(__file__).resolve().parents[1]
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src"
+SCRIPTS = ROOT / "scripts"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
-try:
-    from scripts.api_demo.bench_lib import run_backends, build_availability, rows_for_console, log_results_jsonl  # type: ignore
-except Exception:
-    from api_demo.bench_lib import run_backends, build_availability, rows_for_console, log_results_jsonl  # type: ignore
-
-try:
-    from scripts.api_demo.bench_console import print_bench_console_summary  # type: ignore
-except Exception:
-    from api_demo.bench_console import print_bench_console_summary  # type: ignore
-
-try:
-    from mdreport.bench import render_bench_from_results  # type: ignore
-except Exception:
-    render_bench_from_results = None  # type: ignore
+from scripts.api_demo.bench_lib import run_backends, build_availability, rows_for_console, log_results_jsonl  # type: ignore
+from console.bench import print_bench_console_summary  # type: ignore
+from mdreport.bench import render_bench_from_results  # type: ignore
 
 
 def run_bench_flow(args: Any) -> int:
@@ -52,7 +45,7 @@ def run_bench_flow(args: Any) -> int:
 
     log_results_jsonl(results, args.jsonl_out)
 
-    if getattr(args, "md_out", None) and render_bench_from_results is not None:
+    if getattr(args, "md_out", None):
         render_bench_from_results(results, args, args.md_out)
 
     return 0

@@ -10,10 +10,10 @@ import sys
 import argparse
 from pathlib import Path
 
-# Add scripts to path for runner import
-_SCRIPTS = Path(__file__).resolve().parents[1]
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
+# Ensure project root on sys.path so absolute imports like `scripts.api_demo.*` work
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from scripts.api_demo.bench_args import parse_args  # type: ignore
 from scripts.api_demo.bench_runner import run_bench_flow  # type: ignore
 
