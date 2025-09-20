@@ -99,7 +99,26 @@ def can_process_within(backend: str, rows: int, budget_s: float, operation: str 
     if glob_arg:
         cmd = [PY, str(SCRIPT), "--data-glob", glob_arg, "--only-backend", backend]
     else:
-        cmd = [PY, str(SCRIPT), "--only-backend", backend]
+        # For tiny synthetic runs, simulate via a generated parquet temp dir
+        try:
+            import pandas as _pd  # type: ignore
+            _tmp_dir = ROOT / "data" / f"brc_tmp_{rows}"
+            _tmp_dir.mkdir(parents=True, exist_ok=True)
+            _p = _tmp_dir / "generated.parquet"
+            if not _p.exists():
+                import random as _rnd
+                r = _rnd.Random(42)
+                _pdf = _pd.DataFrame({
+                    "id": list(range(max(1, rows))),
+                    "x": [r.randint(-10,10) for _ in range(max(1, rows))],
+                    "y": [r.randint(-10,10) for _ in range(max(1, rows))],
+                    "cat": [r.choice(["x","y","z"]) for _ in range(max(1, rows))],
+                })
+                    
+                _pdf.to_parquet(str(_p), index=False)
+            cmd = [PY, str(SCRIPT), "--data-glob", str(_tmp_dir / "*.parquet"), "--only-backend", backend]
+        except Exception:
+            cmd = [PY, str(SCRIPT), "--only-backend", backend]
     start = time.perf_counter()
     try:
         subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=budget_s)
