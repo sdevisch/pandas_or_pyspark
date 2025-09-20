@@ -100,7 +100,20 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
-from .brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
+try:
+    from .brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
+except Exception:
+    # Allow running as a standalone script/module import without package context
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _here = _Path(__file__).resolve()
+        _sys.path.append(str(_here.parent))  # scripts/brc
+        from brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
+    except Exception:
+        # Fallback to local construction
+        REPORTS = ROOT / "reports" / "brc"
+        OUT = REPORTS / "brc_1b_groupby.md"
 REPORTS.mkdir(parents=True, exist_ok=True)
 
 Backends = ALL_BACKENDS
@@ -461,11 +474,23 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     source = _detect_source(chunks)
     input_rows = input_rows_override if input_rows_override is not None else _total_rows_from_parquet(chunks)
     # Protect main report: if input rows are less than 1B, route to smoke report unless explicitly overridden
-    from .brc_paths import REPORT_MAIN as default_out, REPORT_SMOKE as smoke_out  # type: ignore
     effective_out = None
     if md_out:
         effective_out = Path(md_out)
     else:
+        # Only import path constants when we need defaults to avoid import issues under tests
+        try:
+            from .brc_paths import REPORT_MAIN as default_out, REPORT_SMOKE as smoke_out  # type: ignore
+        except Exception:
+            try:
+                import sys as _sys
+                from pathlib import Path as _Path
+                _here = _Path(__file__).resolve()
+                _sys.path.append(str(_here.parent))
+                from brc_paths import REPORT_MAIN as default_out, REPORT_SMOKE as smoke_out  # type: ignore
+            except Exception:
+                default_out = OUT
+                smoke_out = REPORTS / "brc_smoke_groupby.md"
         try:
             inp = int(input_rows) if input_rows is not None else None
         except Exception:

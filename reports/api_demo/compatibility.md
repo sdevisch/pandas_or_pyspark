@@ -1,8 +1,8 @@
 # Compatibility matrix
 
-Generated at: 2025-09-20 07:37:28
+Generated at: 2025-09-20 09:42:55
 
-Generated at: 2025-09-20 07:37:22
+Generated at: 2025-09-20 09:42:49
 
 ```text
 operation    pandas  dask  pyspark  polars  duckdb  numpy  numba
