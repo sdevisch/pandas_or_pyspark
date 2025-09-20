@@ -5,6 +5,11 @@ __pycache__/
 
 # Local venvs (keep repo clean)
 pandas_pyspark/
+venv/
+.venv/
+env/
+ENV/
+
 
 # Build metadata
 src/unipandas.egg-info/
