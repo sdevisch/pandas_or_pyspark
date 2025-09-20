@@ -100,7 +100,20 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
-from .brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
+try:
+    from .brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
+except Exception:
+    # Allow running as a standalone script/module import without package context
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _here = _Path(__file__).resolve()
+        _sys.path.append(str(_here.parent))  # scripts/brc
+        from brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
+    except Exception:
+        # Fallback to local construction
+        REPORTS = ROOT / "reports" / "brc"
+        OUT = REPORTS / "brc_1b_groupby.md"
 REPORTS.mkdir(parents=True, exist_ok=True)
 
 Backends = ALL_BACKENDS

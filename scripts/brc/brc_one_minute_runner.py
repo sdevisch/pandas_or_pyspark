@@ -13,7 +13,18 @@ from typing import List
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-from .brc_paths import REPORTS_BRC as REPORTS, REPORT_1MIN as OUT  # type: ignore
+try:
+    from .brc_paths import REPORTS_BRC as REPORTS, REPORT_1MIN as OUT  # type: ignore
+except Exception:
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _here = _Path(__file__).resolve()
+        _sys.path.append(str(_here.parent))
+        from brc_paths import REPORTS_BRC as REPORTS, REPORT_1MIN as OUT  # type: ignore
+    except Exception:
+        REPORTS = ROOT / "reports" / "brc"
+        OUT = REPORTS / "brc_under_1min_capacity.md"
 REPORTS.mkdir(parents=True, exist_ok=True)
 
 PY = sys.executable or "python3"
