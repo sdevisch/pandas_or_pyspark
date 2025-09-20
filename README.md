@@ -122,10 +122,20 @@ Notes
 
 Benchmarking
 ------------
-Run the same workload across available backends and compare timings (front-ends: pandas, PySpark, Narwhals):
+Run the same workload across available backends and compare timings.
+
+Front-ends vs Backends
+----------------------
+- Front-end: the user-facing API driving the workload (pandas, PySpark's pandas-on-Spark, Narwhals).
+- Backend: the compute engine executing the work (pandas, Dask, PySpark, Polars, DuckDB, …).
+
+We explore multiple front-ends to understand ergonomics and performance portability across backends.
 
 ```bash
 python scripts/api_demo/bench_backends.py path/to/data.csv --assign --query "a > 0" --groupby a
+# Perf matrix (JSONL → Markdown), exploring front-ends:
+python scripts/perf/measure.py --frontends pandas,pyspark,narwhals --backends pandas,polars,duckdb --glob "data/brc_scales/parquet_1000000/*.parquet" --out results/perf.jsonl
+python scripts/reports/perf_matrix.py --in results/perf.jsonl --out reports/perf/perf_matrix.md
 ```
 
 Repository structure
