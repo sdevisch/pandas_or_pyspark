@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 import time
+import subprocess
 from typing import Dict, List, Optional
 from datetime import datetime
 import platform
@@ -248,8 +249,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--code-file", default=None, help="Optional path to the pandas code file processed")
     p.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
     p.add_argument("--jsonl-out", default=None, help="If set, write results JSONL via perfcore to this file")
-    # Data generation is now handled by scripts/data_gen/generate_bench_csv.py
+    # Data generation is handled by scripts/data_gen/generate_bench_csv.py when needed
     p.add_argument("--materialize-rows", type=int, default=MATERIALIZE_ROWS_DEFAULT, help="Rows to materialize for compute timing")
+    p.add_argument("--gen-rows", type=int, default=1_000_000, help="If input does not exist, generate this many rows via data_gen script")
     return p.parse_args()
 
 
@@ -340,14 +342,24 @@ def render_markdown(results: List["PerfResult"], args: argparse.Namespace, md_ou
         print(f"\nWrote Markdown results to {md_out}")
 
 
-def _maybe_synthesize_data(args: argparse.Namespace) -> None:
-    """No-op: data generation moved to scripts/data_gen/generate_bench_csv.py."""
-    return
+def _ensure_input_data(args: argparse.Namespace) -> None:
+    """If args.path does not exist, generate it via scripts/data_gen/generate_bench_csv.py."""
+    target = Path(args.path)
+    if target.exists():
+        return
+    gen_script = Path(__file__).resolve().parents[1] / "data_gen" / "generate_bench_csv.py"
+    gen_script.parent.mkdir(parents=True, exist_ok=True)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [sys.executable, str(gen_script), "--rows", str(args.gen_rows), "--out", str(target)]
+    print("[data_gen] generating input:", " ".join(cmd))
+    r = subprocess.run(cmd)
+    if r.returncode != 0:
+        raise SystemExit(r.returncode)
 
 
 def main() -> int:
     args = _parse_args()
-    _maybe_synthesize_data(args)
+    _ensure_input_data(args)
 
     print("Backends:", Backends)
     results = run_backends(
