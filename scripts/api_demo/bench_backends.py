@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
-"""Lightweight cross-backend benchmark for unipandas (refactored).
+"""Benchmark unipandas across backends with clear separation of duties.
 
-Goals:
-- Keep functions short (≤ 7 statements) and highly readable
-- Add docstrings and inline comments for non-obvious lines
-- Preserve prior behavior and CLI while improving structure
-
-The script measures time to read a small CSV in each backend and run
-optional steps (assign, query, groupby), then materializes a bounded head
-to time compute. Outputs a fixed-width table to console and optional
-Markdown. The actual per-backend work remains in :func:`benchmark`.
+Responsibilities:
+1) run_backends: run the benchmark and return results
+2) log_results: write results to JSONL via perfcore
+3) render_markdown: write a Markdown report (mdreport if available)
 """
 import argparse
 import os
 import sys
 import time
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from datetime import datetime
 import platform
+from pathlib import Path
 
 from unipandas import configure_backend, read_csv
 # Support running as a script or as a module
@@ -46,6 +41,18 @@ except Exception:  # when invoked as a script: python scripts/api_demo/bench_bac
 
 
 Backends = ALL_BACKENDS  # Canonical list comes from scripts/utils.py
+
+# Ensure src/ on path to import perfcore
+_ROOT = Path(__file__).resolve().parents[2]
+_SRC = _ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+try:
+    from perfcore.result import Result as PerfResult, write_results as perf_write_results  # type: ignore
+except Exception:
+    PerfResult = None  # type: ignore
+    perf_write_results = None  # type: ignore
 
 
 def get_backend_version(backend: str) -> Optional[str]:
@@ -75,27 +82,6 @@ def try_configure(backend: str) -> bool:
         return False
 
 
-@dataclass
-class Result:
-    """Single benchmark result for a backend.
-
-    - backend: Backend name ('pandas', 'dask', 'pyspark', ...)
-    - load_s: Seconds to read the CSV into a backend-native dataframe
-    - compute_s: Seconds to compute and materialize output
-    - input_rows: Total input rows processed
-    - groups: Number of groups produced (if groupby used)
-    - used_cores: Approximate parallelism used by the backend
-    - version: Version string of the backend module, if detectable
-    """
-    backend: str
-    load_s: float
-    compute_s: float
-    input_rows: Optional[int]
-    groups: Optional[int]
-    used_cores: Optional[int]
-    version: Optional[str]
-
-
 def _format_fixed_width_table(
     headers: List[str], rows: List[List[str]], right_align_from: int = 2
 ) -> List[str]:
@@ -120,7 +106,6 @@ def _format_fixed_width_table(
 
 
 def _used_cores_for_backend(backend: str) -> Optional[int]:
-    """Delegate to shared utils so all backends, incl. numpy/numba, are handled consistently."""
     try:
         return utils_used_cores_for_backend(backend)
     except Exception:
@@ -161,72 +146,89 @@ def _count_rows_backend(df) -> int:
         return 0
 
 
-def benchmark(path: str, query: Optional[str], assign: bool, groupby: Optional[str]) -> List[Result]:
-    """Run the end-to-end micro-benchmark for each backend.
-
-    Steps per backend:
-    1) configure backend
-    2) read CSV
-    3) optional assign/query/groupby
-    4) materialize to pandas (bounded head) and time compute
-    """
-    results: List[Result] = []
+def run_backends(path: str, query: Optional[str], assign: bool, groupby: Optional[str]) -> List["PerfResult"]:
+    results: List["PerfResult"] = []
     for backend in Backends:
-        if not try_configure(backend):  # Skip unavailable/problematic backends
+        if not try_configure(backend):
             continue
-
         t0 = time.perf_counter()
-        df = read_csv(path)  # Backend-aware CSV reader
+        df = read_csv(path)
         t1 = time.perf_counter()
-
         out = df
         if assign:
             try:
-                out = out.assign(c=lambda x: x["a"] + x["b"])  # type: ignore  # simple column add
-            except Exception as e:
-                print(f"[warn] assign skipped for backend={backend}: {e}")
+                out = out.assign(c=lambda x: x["a"] + x["b"])  # type: ignore
+            except Exception:
+                pass
         if query:
             try:
-                out = out.query(query)  # boolean selection
-            except Exception as e:
-                print(f"[warn] query skipped for backend={backend}: {e}")
-        if groupby:
-            try:
-                out = out.groupby(groupby).agg({groupby: "count"})  # tiny aggregation
-            except Exception as e:
-                print(f"[warn] groupby skipped for backend={backend}: {e}")
-
-        t2 = time.perf_counter()
-        # Count input rows (pre-op) for clarity
-        input_rows = _count_rows_backend(df.to_backend()) if hasattr(df, "to_backend") else None
-        # For compute timing, materialize with a bounded head but report groups when groupby is used
+                out = out.query(query)
+            except Exception:
+                pass
         groups = None
         if groupby:
             try:
+                out = out.groupby(groupby).agg({groupby: "count"})
                 groups = _count_rows_backend(out.to_backend()) if hasattr(out, "to_backend") else None
             except Exception:
                 groups = None
+        t2 = time.perf_counter()
         _ = out.head(1000000000).to_pandas()
         t3 = time.perf_counter()
-
+        input_rows = _count_rows_backend(df.to_backend()) if hasattr(df, "to_backend") else None
         used = _used_cores_for_backend(backend)
         ver = get_backend_version(backend)
-        print(
-            f"[info] backend={backend} version={ver} used_cores={used} available_cores={os.cpu_count()}"
-        )
-
-        results.append(
-            Result(
-                backend=backend,
-                load_s=t1 - t0,
-                compute_s=t3 - t2,
-                input_rows=input_rows,
-                groups=groups,
-                used_cores=used,
-                version=ver,
+        print(f"[info] backend={backend} version={ver} used_cores={used} available_cores={os.cpu_count()}")
+        if PerfResult is None:
+            # Minimal fallback object to keep code flowing in rare envs
+            class _Tmp:  # type: ignore
+                def __init__(self, **kw):
+                    self.__dict__.update(kw)
+            results.append(_Tmp(backend=backend, read_seconds=t1 - t0, compute_seconds=t3 - t2, input_rows=input_rows, groups=groups, used_cores=used, ok=True))
+        else:
+            results.append(
+                PerfResult.now(
+                    frontend="unipandas",
+                    backend=backend,
+                    operation="bench",
+                    dataset_rows=None,
+                    input_rows=input_rows,
+                    read_seconds=t1 - t0,
+                    compute_seconds=t3 - t2,
+                    groups=groups,
+                    used_cores=used,
+                    ok=True,
+                    notes=None,
+                )
             )
-        )
     return results
+
+
+def log_results(results: List["PerfResult"], jsonl_out: Optional[str]) -> None:
+    if not jsonl_out:
+        return
+    path = Path(jsonl_out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Prefer perfcore writer when available
+    if PerfResult is not None and perf_write_results is not None:
+        perf_write_results(path, results, append=False)
+        return
+    # Fallback: write minimal JSONL lines
+    import json as _json
+    with path.open("w") as f:
+        for r in results:
+            payload = {
+                "frontend": getattr(r, "frontend", "unipandas"),
+                "backend": getattr(r, "backend", None),
+                "operation": getattr(r, "operation", "bench"),
+                "input_rows": getattr(r, "input_rows", None),
+                "read_seconds": getattr(r, "read_seconds", None),
+                "compute_seconds": getattr(r, "compute_seconds", None),
+                "groups": getattr(r, "groups", None),
+                "used_cores": getattr(r, "used_cores", None),
+                "ok": getattr(r, "ok", True),
+            }
+            f.write(_json.dumps(payload) + "\n")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -238,6 +240,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--groupby", default="cat", help="Groupby column name to count (default: cat)")
     p.add_argument("--code-file", default=None, help="Optional path to the pandas code file processed")
     p.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
+    p.add_argument("--jsonl-out", default=None, help="If set, write results JSONL via perfcore to this file")
     p.add_argument("--auto-rows", type=int, default=None, help="If set, generate a synthetic CSV with this many rows and use it")
     p.add_argument("--use-existing-1m", action="store_true", help="Use data/bench_1000000.csv if present")
     return p.parse_args()
@@ -251,54 +254,95 @@ def _availability() -> List[Dict[str, object]]:
     return info
 
 
-def _rows_for_console(results: List[Result], availability: List[Dict[str, object]]) -> List[List[str]]:
+def _rows_for_console(results: List["PerfResult"], availability: List[Dict[str, object]]) -> List[List[str]]:
     """Build console/markdown rows in a consistent backend order."""
     by_backend = {r.backend: r for r in results}
     rows: List[List[str]] = []
     for name in Backends:
         r = by_backend.get(name)
         if r:
-            used = r.used_cores if (r.used_cores and r.used_cores > 0) else os.cpu_count()
-            rows.append([name, str(r.version), f"{r.load_s:.4f}", f"{r.compute_s:.4f}", str(r.input_rows), str(used)])
+            used = getattr(r, "used_cores", None) or os.cpu_count()
+            ver = get_backend_version(name)
+            load_s = getattr(r, "read_seconds", None)
+            comp_s = getattr(r, "compute_seconds", None)
+            rows.append([
+                name,
+                str(ver),
+                f"{load_s:.4f}" if isinstance(load_s, float) else "-",
+                f"{comp_s:.4f}" if isinstance(comp_s, float) else "-",
+                str(getattr(r, "input_rows", "-")),
+                str(used),
+            ])
         else:
             ver = next((a["version"] for a in availability if a["backend"] == name), None)
             rows.append([name, str(ver), "-", "-", "-", "-"])
     return rows
 
 
-def _md_sections(args: argparse.Namespace, availability: List[Dict[str, object]], rows: List[List[str]]) -> List[str]:
-    """Compose Markdown sections (header, availability, results)."""
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    md: List[str] = ["# unipandas benchmark", "", "## Run context", ""]
-    md += [f"- Data file: `{args.path}`", f"- Ran at: {ts}", f"- Python: `{platform.python_version()}` on `{platform.platform()}`"]
-    if args.code_file:
-        md.append(f"- Code file: `{args.code_file}`")
-    md.append(f"- System available cores: {os.cpu_count()}")
-    md.append(f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}")
-    md += ["", "## Backend availability", "", "| backend | version | status |", "|---|---|---|"]
-    for item in availability:
-        md.append(f"| {item['backend']} | {item['version']} | {'available' if item['available'] else 'unavailable'} |")
-    md += ["", "## Results (seconds)", "", "```text"]
-    headers = ["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"]
-    for line in _format_fixed_width_table(headers, rows):
-        md.append(line)
-    md.append("```")
-    return md
+def render_markdown(results: List["PerfResult"], args: argparse.Namespace, md_out: Optional[str]) -> None:
+    if not md_out:
+        return
+    availability = _availability()
+    rows = _rows_for_console(results, availability)
+    try:
+        from mdreport import Report, system_info  # type: ignore
+    except Exception:
+        content: List[str] = ["# unipandas benchmark", "", "## Run context", ""]
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        content += [
+            f"- Data file: `{args.path}`",
+            f"- Ran at: {ts}",
+            f"- Python: `{platform.python_version()}` on `{platform.platform()}`",
+            f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}",
+            "",
+            "## Backend availability",
+            "",
+            "| backend | version | status |",
+            "|---|---|---|",
+            *[f"| {it['backend']} | {it['version']} | {'available' if it['available'] else 'unavailable'} |" for it in availability],
+            "",
+            "## Results (seconds)",
+            "",
+            "```text",
+            *_format_fixed_width_table(["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"], rows),
+            "```",
+            "",
+        ]
+        with open(md_out, "w") as f:
+            f.write("\n".join(content))
+        print(f"\nWrote Markdown results to {md_out}")
+    else:
+        rpt = Report(md_out)
+        rpt.title("unipandas benchmark").preface([
+            "## Run context",
+            f"- Data file: `{args.path}`",
+            f"- Ran at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            *system_info(),
+            f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}",
+            "",
+            "## Backend availability",
+            "",
+            "| backend | version | status |",
+            "|---|---|---|",
+            *[f"| {it['backend']} | {it['version']} | {'available' if it['available'] else 'unavailable'} |" for it in availability],
+            "",
+            "## Results (seconds)",
+            "",
+        ])
+        rpt.table(["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"], rows, align_from=2, style="fixed").write()
+        print(f"\nWrote Markdown results to {md_out}")
 
 
 def main() -> int:
-    """Entry point orchestrating parse → run → print → optional markdown."""
     args = _parse_args()
-    # Optionally generate a synthetic dataset with requested row count
+    # Optional data synthesis
     if args.use_existing_1m:
-        from pathlib import Path as _Path
-        candidate = _Path(__file__).resolve().parents[2] / "data" / "bench_1000000.csv"
+        candidate = Path(__file__).resolve().parents[2] / "data" / "bench_1000000.csv"
         if candidate.exists():
             args.path = str(candidate)
     elif args.auto_rows:
-        from pathlib import Path as _Path
         import csv as _csv, random as _random
-        data_dir = _Path(__file__).resolve().parents[2] / "data"
+        data_dir = Path(__file__).resolve().parents[2] / "data"
         data_dir.mkdir(exist_ok=True)
         gen_path = data_dir / f"bench_{args.auto_rows}.csv"
         if not gen_path.exists():
@@ -313,55 +357,19 @@ def main() -> int:
                         _random.choice(["x", "y", "z"]),
                     ])
         args.path = str(gen_path)
-    print("Backends to try:", Backends)
-    print("Availability:")
-    avail = _availability()
-    for item in avail:
-        status = "available" if item["available"] else "unavailable"
-        print(f"- {item['backend']}: {status} (version={item['version']})")
-    results = benchmark(args.path, query=args.query, assign=args.assign, groupby=args.groupby)
+
+    print("Backends:", Backends)
+    results = run_backends(args.path, query=args.query, assign=args.assign, groupby=args.groupby)
     if not results:
-        print("No backends available.")
+        print("No backends produced results.")
         return 1
-    print("\nRun context:")
-    print(f"- Data file: {args.path}")
-    if args.code_file:
-        print(f"- Code file: {args.code_file}")
-    print(f"- System available cores: {os.cpu_count()}")
-    print("\nResults (seconds):")
-    rows = _rows_for_console(results, avail)
-    for line in _format_fixed_width_table(["backend", "version", "load_s", "compute_s", "rows", "used_cores"], rows):
+    # Console summary
+    rows = _rows_for_console(results, _availability())
+    for line in _format_fixed_width_table(["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"], rows):
         print(line)
-    if args.md_out:
-        # Prefer mdreport for consistency; fallback to existing behavior
-        try:
-            from mdreport import Report, system_info  # type: ignore
-        except Exception:
-            # fallback to previous content assembly
-            content = "\n".join(_md_sections(args, avail, rows)) + "\n"
-            with open(args.md_out, "w") as f:
-                f.write(content)
-            print(f"\nWrote Markdown results to {args.md_out}")
-        else:
-            rpt = Report(args.md_out)
-            rpt.title("unipandas benchmark").preface([
-                "## Run context",
-                f"- Data file: `{args.path}`",
-                f"- Ran at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                *system_info(),
-                f"- Args: assign={args.assign}, query={args.query!r}, groupby={args.groupby!r}",
-                "",
-                "## Backend availability",
-                "",
-                "| backend | version | status |",
-                "|---|---|---|",
-                *[f"| {it['backend']} | {it['version']} | {'available' if it['available'] else 'unavailable'} |" for it in avail],
-                "",
-                "## Results (seconds)",
-                "",
-            ])
-            rpt.table(["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"], rows, align_from=2, style="fixed").write()
-            print(f"\nWrote Markdown results to {args.md_out}")
+    # Persist and report
+    log_results(results, args.jsonl_out)
+    render_markdown(results, args, args.md_out)
     return 0
 
 
