@@ -296,11 +296,24 @@ def _cmd_for_glob(backend: str, glob_path: str) -> List[str]:
     return [PY, str(SCRIPT), "--data-glob", glob_path, "--only-backend", backend]
 
 
-def _parse_latest_timings(backend: str) -> tuple[Optional[float], Optional[float]]:
+def _parse_latest_timings(backend: str, jsonl_path: Optional[Path] = None) -> tuple[Optional[float], Optional[float]]:
     """Return (read_s, compute_s) for the most recent run of ``backend``.
 
-    We scan the challenge report bottom-up to find the latest matching line.
+    Prefer parsing from JSONL if provided; otherwise fall back to scanning Markdown.
     """
+    if jsonl_path and jsonl_path.exists():
+        try:
+            lines = [ln for ln in jsonl_path.read_text().splitlines() if ln.strip()]
+            import json as _json  # type: ignore
+            for ln in reversed(lines):
+                obj = _json.loads(ln)
+                if obj.get("backend") == backend and obj.get("operation") == "groupby":
+                    rs = obj.get("read_seconds")
+                    cs = obj.get("compute_seconds")
+                    return (float(rs) if rs is not None else None, float(cs) if cs is not None else None)
+        except Exception:
+            pass
+    # Fallback to Markdown parsing
     p = REPORTS / "billion_row_challenge.md"
     if not p.exists():
         return None, None
@@ -321,16 +334,19 @@ def _run_challenge(cmd: List[str], env: dict, budget_s: float, backend: str) -> 
     Measurement occurs in the child for a single source of truth.
     """
     try:
-        # Run with hard wall-clock cap; capture output for debugging if needed
+        # Prefer JSONL-first: write to a temp per-run file and avoid Markdown entirely
+        jsonl_path = REPORTS.parent.parent / "results" / f"om_{backend}_{os.getpid()}.jsonl"
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd_with_jsonl = list(cmd) + ["--jsonl-out", str(jsonl_path), "--no-md"]
         subprocess.run(
-            cmd,
+            cmd_with_jsonl,
             env=env,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=budget_s,
         )
-        r_s, c_s = _parse_latest_timings(backend)  # Pull timings from report
+        r_s, c_s = _parse_latest_timings(backend, jsonl_path)
         return True, r_s, c_s
     except subprocess.TimeoutExpired:
         return False, None, None

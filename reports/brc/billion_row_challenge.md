@@ -1,6 +1,6 @@
 # Billion Row Challenge (scaffold) - groupby
 
-Generated at: 2025-09-20 08:08:18
+Generated at: 2025-09-20 08:13:51
 
 - operation: groupby
 - materialize: count
@@ -14,7 +14,7 @@ Generated at: 2025-09-20 08:08:18
 ```text
 backend  version   op       read_s  compute_s  rows  used_cores  groups
 -------  --------  -------  ------  ---------  ----  ----------  ------
-pandas   2.2.2     groupby  0.0019     0.0005  1000           1       3
+pandas   2.2.2     groupby  0.0019     0.0004  1000           1       3
 dask     2024.5.1  groupby       -          -     -           -       -
 pyspark  3.5.1     groupby       -          -     -           -       -
 polars   1.33.0    groupby       -          -     -           -       -
