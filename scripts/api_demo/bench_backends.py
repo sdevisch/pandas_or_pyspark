@@ -22,7 +22,6 @@ try:  # when invoked as a module: python -m api_demo.bench_backends
         Backends as ALL_BACKENDS,
         get_backend_version as utils_get_backend_version,
         check_available as utils_check_available,
-        format_fixed as utils_format_fixed,
         used_cores_for_backend as utils_used_cores_for_backend,
     )
 except Exception:  # when invoked as a script: python scripts/api_demo/bench_backends.py
@@ -35,7 +34,6 @@ except Exception:  # when invoked as a script: python scripts/api_demo/bench_bac
         Backends as ALL_BACKENDS,
         get_backend_version as utils_get_backend_version,
         check_available as utils_check_available,
-        format_fixed as utils_format_fixed,
         used_cores_for_backend as utils_used_cores_for_backend,
     )
 
@@ -53,6 +51,9 @@ try:
 except Exception:
     PerfResult = None  # type: ignore
     perf_write_results = None  # type: ignore
+
+# Default number of rows to materialize for compute timing
+MATERIALIZE_ROWS_DEFAULT = 1_000_000
 
 
 def get_backend_version(backend: str) -> Optional[str]:
@@ -146,7 +147,13 @@ def _count_rows_backend(df) -> int:
         return 0
 
 
-def run_backends(path: str, query: Optional[str], assign: bool, groupby: Optional[str]) -> List["PerfResult"]:
+def run_backends(
+    path: str,
+    query: Optional[str],
+    assign: bool,
+    groupby: Optional[str],
+    materialize_rows: int = MATERIALIZE_ROWS_DEFAULT,
+) -> List["PerfResult"]:
     results: List["PerfResult"] = []
     for backend in Backends:
         if not try_configure(backend):
@@ -173,7 +180,7 @@ def run_backends(path: str, query: Optional[str], assign: bool, groupby: Optiona
             except Exception:
                 groups = None
         t2 = time.perf_counter()
-        _ = out.head(1000000000).to_pandas()
+        _ = out.head(materialize_rows).to_pandas()
         t3 = time.perf_counter()
         input_rows = _count_rows_backend(df.to_backend()) if hasattr(df, "to_backend") else None
         used = _used_cores_for_backend(backend)
@@ -243,6 +250,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--jsonl-out", default=None, help="If set, write results JSONL via perfcore to this file")
     p.add_argument("--auto-rows", type=int, default=None, help="If set, generate a synthetic CSV with this many rows and use it")
     p.add_argument("--use-existing-1m", action="store_true", help="Use data/bench_1000000.csv if present")
+    p.add_argument("--materialize-rows", type=int, default=MATERIALIZE_ROWS_DEFAULT, help="Rows to materialize for compute timing")
     return p.parse_args()
 
 
@@ -333,14 +341,14 @@ def render_markdown(results: List["PerfResult"], args: argparse.Namespace, md_ou
         print(f"\nWrote Markdown results to {md_out}")
 
 
-def main() -> int:
-    args = _parse_args()
-    # Optional data synthesis
+def _maybe_synthesize_data(args: argparse.Namespace) -> None:
+    """Optionally generate or pick a dataset based on CLI flags."""
     if args.use_existing_1m:
         candidate = Path(__file__).resolve().parents[2] / "data" / "bench_1000000.csv"
         if candidate.exists():
             args.path = str(candidate)
-    elif args.auto_rows:
+        return
+    if args.auto_rows:
         import csv as _csv, random as _random
         data_dir = Path(__file__).resolve().parents[2] / "data"
         data_dir.mkdir(exist_ok=True)
@@ -358,8 +366,19 @@ def main() -> int:
                     ])
         args.path = str(gen_path)
 
+
+def main() -> int:
+    args = _parse_args()
+    _maybe_synthesize_data(args)
+
     print("Backends:", Backends)
-    results = run_backends(args.path, query=args.query, assign=args.assign, groupby=args.groupby)
+    results = run_backends(
+        args.path,
+        query=args.query,
+        assign=args.assign,
+        groupby=args.groupby,
+        materialize_rows=args.materialize_rows,
+    )
     if not results:
         print("No backends produced results.")
         return 1
