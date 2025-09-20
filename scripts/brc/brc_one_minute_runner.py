@@ -154,7 +154,7 @@ def main():
                 # If no files exist for this size, skip without breaking
                 if not glob.glob(glob_arg):
                     continue
-            ok, elapsed = can_process_within(backend, size, args.budget, args.operation, glob_arg)
+            ok, elapsed = can_process_within(backend, size, args.budget, "groupby", glob_arg)
             if ok:
                 max_rows = size
                 elapsed_at_max = elapsed
