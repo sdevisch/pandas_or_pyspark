@@ -10,7 +10,7 @@ from perfcore import measure_once, write_results
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Run performance measurements and write JSONL results")
-    p.add_argument("--frontends", default="pandas,pyspark", help="Comma-separated frontends")
+    p.add_argument("--frontends", default="pandas,pyspark,narwhals", help="Comma-separated frontends")
     p.add_argument("--backends", default="pandas,dask,pyspark,polars,duckdb,numpy,numba", help="Comma-separated backends")
     p.add_argument("--glob", required=True, help="Parquet glob for dataset")
     p.add_argument("--out", default="results/perf.jsonl", help="Output JSONL path")

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/sdevisch/repos/pandas_or_pyspark/scripts/brc/brc_one_minute_runner.py", line 161, in <module>
+    sys.exit(main())
+  File "/Users/sdevisch/repos/pandas_or_pyspark/scripts/brc/brc_one_minute_runner.py", line 128, in main
+    ok, elapsed = can_process_within(backend, size, args.budget, args.operation, glob_arg)
+AttributeError: 'Namespace' object has no attribute 'operation'
