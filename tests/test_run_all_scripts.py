@@ -96,6 +96,14 @@ def _scripts_to_run(root: Path, tiny_parquet: str, tiny_csv: str):
     rel = root / "scripts/api_demo/relational_bench.py"
     if rel.exists():
         runs.append((rel, []))
+    # parquet inventory (utility)
+    pinv = root / "scripts/parquet_inventory.py"
+    if pinv.exists():
+        runs.append((pinv, ["--glob", tiny_parquet]))
+    # data gen: we will only smoke the light generator if present
+    gen = root / "scripts/data_gen/brc_generate_data.py"
+    if gen.exists():
+        runs.append((gen, ["--rows", "100", "--out", str(root / "data/gen_smoke")]))
     brc_report = root / "scripts/reports/brc_report_from_jsonl.py"
     if brc_report.exists():
         runs.append(
