@@ -167,7 +167,7 @@ def configure_backend(name: str) -> Backend:
         value = "numba"
     else:
         raise ValueError(
-            f"Unknown backend '{name}'. Valid options are 'pandas', 'dask', 'pyspark', 'polars', 'duckdb', 'numpy'."
+            f"Unknown backend '{name}'. Valid options are 'pandas', 'dask', 'pyspark', 'polars', 'duckdb', 'numpy', 'numba'."
         )
 
     global _CURRENT_BACKEND

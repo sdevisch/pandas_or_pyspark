@@ -17,7 +17,19 @@ REPORTS = ROOT / "reports" / "api_demo"
 REPORTS.mkdir(exist_ok=True)
 OUT = REPORTS / "compatibility.md"
 
-Backends = ["pandas", "dask", "pyspark", "polars", "duckdb", "numpy", "numba"]
+# Use centralized list from scripts/utils.py to avoid drift
+try:
+    from .utils import Backends as ALL_BACKENDS  # type: ignore
+    Backends = ALL_BACKENDS
+except Exception:
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.append(str(_Path(__file__).resolve().parents[1]))
+        from utils import Backends as ALL_BACKENDS  # type: ignore
+        Backends = ALL_BACKENDS
+    except Exception:
+        Backends = ["pandas", "dask", "pyspark", "polars", "duckdb", "numpy", "numba"]
 
 
 def make_dataset() -> Path:
