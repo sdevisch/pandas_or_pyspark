@@ -540,7 +540,8 @@ def main():
         write_report(chunks, results_local, args.md_out, append=append, title_suffix=title, input_rows_override=input_rows_total)
 
     backends_to_run = [args.only_backend] if args.only_backend else Backends
-    include_ph = args.only_backend is None
+    # Always include placeholders so the report shows a full matrix even when a single backend is run
+    include_ph = True
     run_for_op(append=False, title="groupby", include_placeholders=include_ph)
     print(f"Ran BRC (groupby) with materialize={args.materialize}")
 
