@@ -63,7 +63,7 @@ def sci(n: int) -> str:
     return f"{n:.1e}"
 
 
-def can_process_within(backend: str, rows: int, budget_s: float, operation: str, data_glob: str | None) -> tuple[bool, float]:
+def can_process_within(backend: str, rows: int, budget_s: float, operation: str | None = None, data_glob: str | None = None) -> tuple[bool, float]:
     env = os.environ.copy()
     env["UNIPANDAS_BACKEND"] = backend
     # BRC is parquet-only: if no data_glob provided, synthesize a tiny parquet
@@ -87,9 +87,9 @@ def can_process_within(backend: str, rows: int, budget_s: float, operation: str,
         except Exception:
             glob_arg = None
     if glob_arg:
-        cmd = [PY, str(SCRIPT), "--data-glob", glob_arg, "--operation", operation, "--only-backend", backend]
+        cmd = [PY, str(SCRIPT), "--data-glob", glob_arg, "--only-backend", backend]
     else:
-        cmd = [PY, str(SCRIPT), "--operation", operation, "--only-backend", backend]
+        cmd = [PY, str(SCRIPT), "--only-backend", backend]
     start = time.perf_counter()
     try:
         subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=budget_s)
@@ -103,7 +103,7 @@ def can_process_within(backend: str, rows: int, budget_s: float, operation: str,
 def main():
     parser = argparse.ArgumentParser(description="1-minute BRC runner: max rows per backend under 60s")
     parser.add_argument("--budget", type=float, default=60.0, help="Seconds per attempt")
-    parser.add_argument("--operation", choices=["filter", "groupby"], default="groupby")
+    # Operation is fixed to groupby in the challenge script
     parser.add_argument("--data-glob", default=None, help="Optional glob to use existing data instead of generating")
     parser.add_argument(
         "--data-glob-template",
