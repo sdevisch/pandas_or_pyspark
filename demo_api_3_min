@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 import platform
+from typing import Optional
 from pathlib import Path
 from datetime import datetime
 
@@ -196,7 +197,7 @@ def append_section(report_path: Path, title: str, md_part: Path) -> None:
         f.write(md_part.read_text())  # Insert the fragment verbatim
 
 
-def run_and_append(report_path: Path, title: str, cmd: list[str], fragment: Path, timeout_s: float | None = None) -> bool:
+def run_and_append(report_path: Path, title: str, cmd: list[str], fragment: Path, timeout_s: Optional[float] = None) -> bool:
     """Run a command and append its Markdown fragment to the report.
 
     Returns True on success; False if timed out (when timeout_s is provided).
