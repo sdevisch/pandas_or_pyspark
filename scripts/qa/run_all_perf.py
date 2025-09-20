@@ -11,21 +11,32 @@ from datetime import datetime
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 SCRIPTS = ROOT / "scripts"
-BRC = SCRIPTS / "brc"
 REPORTS = ROOT / "reports"
 RESULTS = ROOT / "results"
 
+# Ensure repo root on path for script execution
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-# Centralized paths
-from scripts.brc.brc_paths import (
-    BRC_SCALES,
-    RESULTS_BRC_MAIN_JSONL,
-    RESULTS_BRC_SMOKE_JSONL,
-    REPORT_MAIN,
-    REPORT_SMOKE,
-)  # type: ignore
+# Define required paths locally (avoid relying on scripts.brc.brc_paths exports)
+DATA = ROOT / "data"
+BRC_SCALES = DATA / "brc_scales"
+
+REPORTS_BRC = REPORTS / "brc"
+REPORTS_PERF = REPORTS / "perf"
+REPORTS_BRC.mkdir(parents=True, exist_ok=True)
+REPORTS_PERF.mkdir(parents=True, exist_ok=True)
+
+RESULTS_BRC = RESULTS / "brc"
+RESULTS_BRC.mkdir(parents=True, exist_ok=True)
+
+REPORT_MAIN = REPORTS_BRC / "brc_1b_groupby.md"
+REPORT_SMOKE = REPORTS_BRC / "brc_smoke_groupby.md"
+
+RESULTS_BRC_MAIN_JSONL = RESULTS_BRC / "brc_1b_groupby.jsonl"
+RESULTS_BRC_SMOKE_JSONL = RESULTS_BRC / "brc_smoke_groupby.jsonl"
 
 
 def _run(cmd: list[str], env: dict[str, str]) -> None:
@@ -43,15 +54,17 @@ def main() -> None:
     env.setdefault("PYARROW_IGNORE_TIMEZONE", "1")
 
     # Choose dataset globs; prefer 1B if present, else fallback to smaller scale
-    glob_1b = str(BRC_SCALES / "parquet_1000000000" / "*.parquet")
-    glob_100m = str(BRC_SCALES / "parquet_100000000" / "*.parquet")
+    glob_1b_dir = BRC_SCALES / "parquet_1000000000"
+    glob_100m_dir = BRC_SCALES / "parquet_100000000"
+    glob_1b = str(glob_1b_dir / "*.parquet")
+    glob_100m = str(glob_100m_dir / "*.parquet")
 
-    data_glob = glob_1b if list((BRC_SCALES / "parquet_1000000000").glob("*.parquet")) else glob_100m
+    data_glob = glob_1b if list(glob_1b_dir.glob("*.parquet")) else glob_100m
 
     # 1) Measure and write JSONL via challenge for the selected scale
     _run([
         sys.executable,
-        str(BRC / "billion_row_challenge.py"),
+        str(SCRIPTS / "brc" / "billion_row_challenge.py"),
         "--data-glob", data_glob,
         "--jsonl-out", str(RESULTS_BRC_MAIN_JSONL if "1000000000" in data_glob else RESULTS_BRC_SMOKE_JSONL),
         "--no-md",
@@ -66,7 +79,6 @@ def main() -> None:
     ], env)
 
     # 3) Optional: perf matrix end-to-end quick pass on a subset
-    # Generate perf.jsonl with a few frontends/backends to populate matrix
     _run([
         sys.executable,
         str(SCRIPTS / "perf" / "measure.py"),
