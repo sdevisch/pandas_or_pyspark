@@ -98,11 +98,18 @@ OUT = REPORTS / "billion_row_om.md"
 
 PY = sys.executable or "python3"  # Use current interpreter; fallback to python3
 
+# Canonical backends list from scripts/utils.py
+try:
+    from scripts.utils import Backends as Backends  # type: ignore
+except Exception:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.append(str(_Path(__file__).resolve().parents[1]))
+    from utils import Backends as Backends  # type: ignore
+
 # We delegate real work to the single-source-of-truth challenge script and only
 # orchestrate/measure here to avoid duplicate logic.
 SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"  # Single source of truth for ops/IO
-
-Backends = ["pandas", "dask", "pyspark", "polars", "duckdb"]  # Execution backends under test
 
 # Operation performed by the challenge for OM runs (could be made CLI-configurable)
 OPERATION = "groupby"  # Default operation for OM runs (shared across steps)
