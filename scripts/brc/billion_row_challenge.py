@@ -102,7 +102,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 REPORTS = ROOT / "reports" / "brc"
 REPORTS.mkdir(parents=True, exist_ok=True)
-OUT = REPORTS / "billion_row_challenge.md"
+OUT = REPORTS / "brc_1b_groupby.md"
 
 Backends = ALL_BACKENDS
 
@@ -463,7 +463,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     input_rows = input_rows_override if input_rows_override is not None else _total_rows_from_parquet(chunks)
     # Protect main report: if input rows are less than 1B, route to smoke report unless explicitly overridden
     default_out = OUT
-    smoke_out = REPORTS / "billion_row_challenge_smoke.md"
+    smoke_out = REPORTS / "brc_smoke_groupby.md"
     effective_out = None
     if md_out:
         effective_out = Path(md_out)

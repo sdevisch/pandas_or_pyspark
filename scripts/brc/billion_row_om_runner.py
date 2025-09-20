@@ -94,7 +94,7 @@ REPORTS = ROOT / "reports" / "brc"
 REPORTS.mkdir(parents=True, exist_ok=True)
 
 # Destination report path for this runner.
-OUT = REPORTS / "billion_row_om.md"
+OUT = REPORTS / "brc_order_of_magnitude.md"
 
 PY = sys.executable or "python3"  # Use current interpreter; fallback to python3
 
@@ -314,7 +314,7 @@ def _parse_latest_timings(backend: str, jsonl_path: Optional[Path] = None) -> tu
         except Exception:
             pass
     # Fallback to Markdown parsing
-    p = REPORTS / "billion_row_challenge.md"
+    p = REPORTS / "brc_1b_groupby.md"
     if not p.exists():
         return None, None
     for line in p.read_text().strip().splitlines()[::-1]:
