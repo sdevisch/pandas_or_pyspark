@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Benchmark unipandas across backends using shared helpers and perfcore."""
+"""Benchmark unipandas across backends using shared helpers and perfcore.
+
+This file is intentionally small and reads like a story:
+1) parse arguments
+2) run benchmarks
+3) print a concise console summary
+4) write JSONL and, optionally, a Markdown report
+"""
 import sys
 from typing import List, Optional
 import argparse
@@ -58,8 +65,8 @@ def _used_cores_for_backend(backend: str) -> Optional[int]:
     return None
 
 
-def _count_rows_backend(df) -> int:
-    return 0
+# Console headers for readability
+HEADERS = ["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"]
 
 
 def run_backends(path: str, query: Optional[str], assign: bool, groupby: Optional[str], materialize_rows: int = MATERIALIZE_ROWS_DEFAULT):
@@ -70,15 +77,18 @@ def log_results(results, jsonl_out: Optional[str]) -> None:
     write_jsonl_results(results, jsonl_out)
 
 
-def _parse_args():
+def get_cli_args() -> argparse.Namespace:
+    """Parse and return command-line arguments for the benchmark."""
     return parse_args()
 
 
 def _availability() -> List[dict]:
+    """Return backend availability and versions."""
     return get_availability()
 
 
-def _rows_for_console(results, availability):
+def build_console_rows(results, availability):
+    """Build rows for console/markdown, in a consistent backend order."""
     return build_rows(results, availability)
 
 
@@ -87,7 +97,7 @@ def render_markdown(results, args: argparse.Namespace, md_out: Optional[str]) ->
         return
     availability = get_availability()
     rows = build_rows(results, availability)
-    headers = ["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"]
+    headers = HEADERS
     if render_bench_markdown is not None:
         render_bench_markdown(md_out, args, availability, headers, rows)
     else:
@@ -103,30 +113,49 @@ def _maybe_synthesize_data(args: argparse.Namespace) -> None:
 
 
 def _print_console_summary(rows: List[List[str]]) -> None:
-    headers = ["backend", "version", "load_s", "compute_s", "input_rows", "used_cores"]
-    for line in _format_fixed_width_table(headers, rows):
+    """Print the tabular summary to stdout in a fixed-width format."""
+    for line in _format_fixed_width_table(HEADERS, rows):
         print(line)
 
 
-def main() -> int:
-    args = _parse_args()
-    _maybe_synthesize_data(args)
-
+def _announce_backends() -> None:
+    """Explain where the list of backends comes from."""
     print("Backends:", "(see scripts/utils.py)")
-    results = run_benchmarks(
-        args.path,
-        query=args.query,
-        assign=args.assign,
-        groupby=args.groupby,
-        materialize_rows=args.materialize_rows,
-    )
-    if not results:
-        print("No backends produced results.")
-        return 1
-    rows = _rows_for_console(results, _availability())
+
+
+def _summarize_and_write(results, args) -> None:
+    """Summarize to console, write JSONL, and render Markdown if requested."""
+    rows = build_console_rows(results, _availability())
     _print_console_summary(rows)
     write_jsonl_results(results, args.jsonl_out)
     render_markdown(results, args, args.md_out)
+
+
+def results_are_empty(results) -> bool:
+    """Return True if no results were produced by any backend."""
+    return not results
+
+
+def main() -> int:
+    args = get_cli_args()
+    _maybe_synthesize_data(args)
+
+    _announce_backends()
+    results = run_benchmarks(
+        args.path,
+        # query: optional pandas-like filter expression applied before aggregation
+        query=args.query,
+        # assign: when True, adds column c = a + b before subsequent operations
+        assign=args.assign,
+        # groupby: name of the column to group on (rows are counted per group)
+        groupby=args.groupby,
+        # materialize_rows: number of rows to materialize to time the compute step
+        materialize_rows=args.materialize_rows,
+    )
+    if results_are_empty(results):
+        print("No backends produced results.")
+        return 1
+    _summarize_and_write(results, args)
     return 0
 
 
