@@ -28,6 +28,7 @@ try:  # when invoked as a module: python -m api_demo.bench_backends
         get_backend_version as utils_get_backend_version,
         check_available as utils_check_available,
         format_fixed as utils_format_fixed,
+        used_cores_for_backend as utils_used_cores_for_backend,
     )
 except Exception:  # when invoked as a script: python scripts/api_demo/bench_backends.py
     import sys
@@ -40,6 +41,7 @@ except Exception:  # when invoked as a script: python scripts/api_demo/bench_bac
         get_backend_version as utils_get_backend_version,
         check_available as utils_check_available,
         format_fixed as utils_format_fixed,
+        used_cores_for_backend as utils_used_cores_for_backend,
     )
 
 
@@ -118,37 +120,11 @@ def _format_fixed_width_table(
 
 
 def _used_cores_for_backend(backend: str) -> Optional[int]:
+    """Delegate to shared utils so all backends, incl. numpy/numba, are handled consistently."""
     try:
-        if backend == "pandas":
-            return 1
-        if backend == "dask":
-            try:
-                from distributed import get_client  # type: ignore
-
-                try:
-                    client = get_client()
-                    nthreads = getattr(client, "nthreads", None)
-                    if isinstance(nthreads, dict):
-                        return sum(int(v) for v in nthreads.values())
-                except Exception:
-                    pass
-            except Exception:
-                pass
-            return os.cpu_count() or None
-        if backend == "pyspark":
-            try:
-                from pyspark.sql import SparkSession  # type: ignore
-
-                active = SparkSession.getActiveSession()
-                if active is not None:
-                    sc = active.sparkContext
-                    return int(getattr(sc, "defaultParallelism", None) or 0) or None
-            except Exception:
-                pass
-            return None  # Spark parallelism is environment-dependent
+        return utils_used_cores_for_backend(backend)
     except Exception:
         return None
-    return None
 
 
 def _count_rows_backend(df) -> int:
