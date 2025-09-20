@@ -100,9 +100,8 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
-REPORTS = ROOT / "reports" / "brc"
+from .brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
 REPORTS.mkdir(parents=True, exist_ok=True)
-OUT = REPORTS / "brc_1b_groupby.md"
 
 Backends = ALL_BACKENDS
 
@@ -462,8 +461,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     source = _detect_source(chunks)
     input_rows = input_rows_override if input_rows_override is not None else _total_rows_from_parquet(chunks)
     # Protect main report: if input rows are less than 1B, route to smoke report unless explicitly overridden
-    default_out = OUT
-    smoke_out = REPORTS / "brc_smoke_groupby.md"
+    from .brc_paths import REPORT_MAIN as default_out, REPORT_SMOKE as smoke_out  # type: ignore
     effective_out = None
     if md_out:
         effective_out = Path(md_out)

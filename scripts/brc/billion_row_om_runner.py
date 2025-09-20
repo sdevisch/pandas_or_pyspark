@@ -90,11 +90,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # Reports live under reports/brc. Create the directory eagerly to avoid race
 # conditions later on when writing files in subprocess-driven flows.
-REPORTS = ROOT / "reports" / "brc"
+from .brc_paths import REPORTS_BRC as REPORTS, REPORT_OM as OUT  # type: ignore
 REPORTS.mkdir(parents=True, exist_ok=True)
-
-# Destination report path for this runner.
-OUT = REPORTS / "brc_order_of_magnitude.md"
 
 PY = sys.executable or "python3"  # Use current interpreter; fallback to python3
 
