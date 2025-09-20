@@ -111,8 +111,8 @@ except Exception:
 # orchestrate/measure here to avoid duplicate logic.
 SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"  # Single source of truth for ops/IO
 
-# Operation performed by the challenge for OM runs (could be made CLI-configurable)
-OPERATION = "groupby"  # Default operation for OM runs (shared across steps)
+# Operation is fixed in the challenge script (groupby-only)
+OPERATION = "groupby"
 
 # Escalating target sizes we attempt per backend (logical rows intended).
 ORDERS = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
@@ -246,6 +246,7 @@ def run_once(backend: str, rows: int, budget_s: float) -> Entry:
     """
     env = _env_for_backend(backend)
     # Parquet-only: generate a tiny parquet if needed for this single run
+    # Always prefer parquet glob path; fall back to challenge default if generation unavailable
     try:
         import pandas as _pd  # type: ignore
         _tmp_dir = ROOT / "data" / f"brc_tmp_{rows}"
@@ -286,13 +287,13 @@ def _env_for_backend(backend: str) -> dict:
 
 
 def _cmd_for_rows(backend: str, rows: int) -> List[str]:
-    """Command to generate and run one CSV chunk with ``rows``."""
-    return [PY, str(SCRIPT), "--rows-per-chunk", str(rows), "--num-chunks", "1", "--operation", OPERATION, "--only-backend", backend]
+    """Command to run the challenge for a tiny generated parquet (deprecated path)."""
+    return [PY, str(SCRIPT), "--only-backend", backend]
 
 
 def _cmd_for_glob(backend: str, glob_path: str) -> List[str]:
     """Command to run the challenge against existing data at ``glob_path``."""
-    return [PY, str(SCRIPT), "--data-glob", glob_path, "--operation", OPERATION, "--only-backend", backend]
+    return [PY, str(SCRIPT), "--data-glob", glob_path, "--only-backend", backend]
 
 
 def _parse_latest_timings(backend: str) -> tuple[Optional[float], Optional[float]]:

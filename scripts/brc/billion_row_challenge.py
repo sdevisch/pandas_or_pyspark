@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Billion Row Challenge (BRC) scaffold.
 
-This script provides a safe, repeatable harness for running a small set of
-pandas-like operations across multiple data processing backends. It focuses on
-two core operations — a boolean filter and a simple groupby/aggregation — and
-logs the time to read/concatenate input chunks as well as to compute the
-operation. Results are written as a fixed-width table for alignment in
-Markdown.
+This script provides a safe, repeatable harness for the Billion Row Challenge
+across multiple data processing backends. It runs a single operation — a
+groupby/aggregation — and logs the time to read/concatenate input chunks as
+well as to compute the operation. Results are written as a fixed-width table
+for alignment in Markdown.
 
 Key properties:
 - Data generation is chunked and size-specific (by rows-per-chunk). This avoids
@@ -24,11 +23,8 @@ Outputs:
 
 Usage
 -----
-Basic run (generate small CSV chunks and filter):
-    python scripts/brc/billion_row_challenge.py --rows-per-chunk 100000 --num-chunks 2 --operation filter
-
-Run on existing Parquet chunks:
-    python scripts/brc/billion_row_challenge.py --data-glob "data/brc_100000/*.parquet" --operation groupby
+Run on default 1B-row Parquet chunks (preferred):
+    python scripts/brc/billion_row_challenge.py
 
 Run a single backend explicitly:
     UNIPANDAS_BACKEND=pyspark python scripts/brc/billion_row_challenge.py --only-backend pyspark
@@ -38,11 +34,8 @@ Force full compute (instead of head) and write report to custom path:
 
 CLI Flags
 ---------
-- --rows-per-chunk: Integer row count per generated CSV chunk (default 1_000_000)
-- --num-chunks: Number of chunks to generate (default 1)
-- --operation: "filter" or "groupby" (default "filter")
 - --materialize: "head" (default), "count" (full compute w/o full transfer), or "all"
-- --data-glob: Glob pattern for existing inputs (Parquet or CSV)
+- --data-glob: Glob pattern for existing inputs (Parquet only). Defaults to 1B rows.
 - --only-backend: Restrict run to a single backend
 - --md-out: Output markdown path
 
@@ -53,7 +46,7 @@ Environment
 
 Notes
 -----
-- CSV generation uses size-specific directories to avoid reusing small files for larger sizes.
+- BRC is Parquet-only. CSV is not supported.
 - For lazy engines (Dask, pandas-on-Spark), "count" is recommended to force full compute without
   a full to_pandas transfer.
 """
@@ -194,42 +187,41 @@ def format_fixed(headers: List[str], rows: List[List[str]]) -> List[str]:
 
 
 def parse_arguments():
-    """Parse CLI arguments and return a namespace.
+    """Parse CLI arguments and return a namespace (groupby-only).
 
     Returns
     -------
     argparse.Namespace
-        The parsed arguments including rows-per-chunk, number of chunks,
-        operation, optional existing data glob, optional specific backend,
-        and optional Markdown output path.
+        The parsed arguments including optional existing data glob, optional
+        specific backend, materialization mode, and optional Markdown output
+        path. Defaults to 1B-row Parquet glob.
     """
-    p = argparse.ArgumentParser(description="Billion Row Challenge (safe scaffold)")
-    args_list = [
-        ("--rows-per-chunk", dict(type=int, default=1_000_000)),
-        ("--num-chunks", dict(type=int, default=1)),
-        ("--operation", dict(default="groupby", choices=["filter", "groupby", "both"])),
-        ("--materialize", dict(default="count", choices=["head", "count", "all"])),
-        ("--data-glob", dict(default=None)),
-        ("--only-backend", dict(default=None)),
-        ("--md-out", dict(default=None)),
-    ]
-    for name, kw in args_list:
-        p.add_argument(name, **kw)
+    p = argparse.ArgumentParser(description="Billion Row Challenge (groupby-only)")
+    p.add_argument("--materialize", default="count", choices=["head", "count", "all"])
+    p.add_argument("--data-glob", default=None)
+    p.add_argument("--only-backend", default=None)
+    p.add_argument("--md-out", default=None)
     return p.parse_args()
 
 
 def resolve_chunks(args) -> List[Path]:
-    """Resolve chunk paths from args.
+    """Resolve chunk paths from args (Parquet-only; default to 1B rows glob).
 
     If ``--data-glob`` is provided, expand it to a list of existing files and
-    fail if none found. Otherwise, generate size-specific CSV chunks on demand.
+    fail if none found. Otherwise, default to the 1B-row Parquet scale glob.
     """
     if args.data_glob:
         paths = existing_chunks(args.data_glob)
         if not paths:
             raise SystemExit(f"No files matched --data-glob '{args.data_glob}'")
         return paths
-    return ensure_chunks(args.rows_per_chunk, args.num_chunks)
+    # Default to pre-generated 1B parquet scale
+    root = Path(__file__).resolve().parents[2]
+    default_glob = str(root / "data/brc_scales/parquet_1000000000/*.parquet")
+    paths = existing_chunks(default_glob)
+    if not paths:
+        raise SystemExit("Default 1B Parquet data not found. Provide --data-glob.")
+    return paths
 
 
 
@@ -325,7 +317,7 @@ def run_operation(combined: Frame, op: str, materialize: str) -> tuple[int, floa
     Returns the observed row count (backend-native) and the compute duration.
     """
     t2 = time.perf_counter()
-    out = combined.query("x > 0 and y < 0") if op == "filter" else combined.groupby("cat").agg({"x": "sum", "y": "mean"})
+    out = combined.groupby("cat").agg({"x": "sum", "y": "mean"})
     # Normalize any "head" request to a full count to avoid size reduction
     if materialize == "head":
         materialize = "count"
@@ -384,10 +376,10 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
     import os as __os
     mat = __os.environ.get("BRC_MATERIALIZE", "head")
     try:
-        rows, compute_s = compute_op_and_count(combined, op, mat)
+        rows, compute_s = compute_op_and_count(combined, "groupby", mat)
     except Exception:
-        rows, compute_s = run_operation(combined, op, mat)
-    if op == "groupby":
+        rows, compute_s = run_operation(combined, "groupby", mat)
+    if True:
         # For groupby, interpret the counted rows as number of output groups
         return Result(
             backend=backend,
@@ -401,7 +393,7 @@ def run_backend(backend: str, chunks: List[Path], op: str, input_rows: Optional[
         )
     return Result(
         backend=backend,
-        op=op,
+        op="groupby",
         read_s=read_s,
         compute_s=compute_s,
         rows=rows,
@@ -460,7 +452,7 @@ def _system_info_lines() -> List[str]:
 def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str], *, append: bool = False, title_suffix: str = "", input_rows_override: Optional[int] = None) -> None:
     """Write a fixed-width Markdown report via mdreport if available (fallback to utils)."""
     headers = ["backend", "version", "op", "read_s", "compute_s", "rows", "used_cores"]
-    op_val = results[0].op if results else "-"
+    op_val = "groupby"
     include_groups = any(getattr(r, "groups", None) is not None for r in results)
     if include_groups:
         headers = headers + ["groups"]
@@ -479,7 +471,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     ]
     rows = build_rows(results, include_groups=include_groups)
     suffix = None
-    if op_val == "groupby" and results:
+    if results:
         suffix_lines = ["Groupby result preview (by backend):", "", "```text"]
         for r in results:
             if r.backend:
@@ -523,13 +515,13 @@ def main():
     # Build rows for all known backends, including unavailable ones, so the
     # report always shows a complete matrix of backends with their status.
     availability = {b: check_available(b) for b in Backends}
-    def run_for_op(op: str, *, append: bool, title: str, include_placeholders: bool) -> None:
+    def run_for_op(*, append: bool, title: str, include_placeholders: bool) -> None:
         results_local: List[Result] = []
         input_rows_total = _compute_input_rows_general(chunks, args)
         for backend in backends_to_run:
             if not availability.get(backend, False):
                 continue
-            results_local.append(run_backend(backend, chunks, op, input_rows_total))
+            results_local.append(run_backend(backend, chunks, "groupby", input_rows_total))
         if include_placeholders:
             have = {r.backend for r in results_local}
             for backend in Backends:
@@ -537,7 +529,7 @@ def main():
                     results_local.append(
                         Result(
                             backend=backend,
-                            op=op,
+                            op="groupby",
                             read_s=None,  # type: ignore
                             compute_s=None,  # type: ignore
                             rows=None,
@@ -548,13 +540,10 @@ def main():
         write_report(chunks, results_local, args.md_out, append=append, title_suffix=title, input_rows_override=input_rows_total)
 
     backends_to_run = [args.only_backend] if args.only_backend else Backends
-    include_ph = args.only_backend is None
-    if args.operation == "both":
-        run_for_op("filter", append=False, title="filter", include_placeholders=include_ph)
-        run_for_op("groupby", append=True, title="groupby", include_placeholders=include_ph)
-    else:
-        run_for_op(args.operation, append=False, title=args.operation, include_placeholders=include_ph)
-    print(f"Ran BRC with operation={args.operation} materialize={args.materialize}")
+    # Always include placeholders so the report shows a full matrix even when a single backend is run
+    include_ph = True
+    run_for_op(append=False, title="groupby", include_placeholders=include_ph)
+    print(f"Ran BRC (groupby) with materialize={args.materialize}")
 
 
 if __name__ == "__main__":
