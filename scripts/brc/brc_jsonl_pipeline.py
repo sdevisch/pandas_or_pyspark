@@ -10,8 +10,8 @@ from pathlib import Path
 def main() -> int:
     p = argparse.ArgumentParser(description="Run BRC JSONL-first and render Markdown via mdreport")
     p.add_argument("--data-glob", required=True, help="Parquet glob")
-    p.add_argument("--jsonl-out", default="results/brc.jsonl")
-    p.add_argument("--md-out", default="reports/brc/billion_row_challenge.md")
+    p.add_argument("--jsonl-out", default="results/brc_1b_groupby.jsonl")
+    p.add_argument("--md-out", default="reports/brc/brc_1b_groupby.md")
     p.add_argument("--backend", default=None, help="Optional UNIPANDAS_BACKEND override")
     p.add_argument("--materialize", default="count", choices=["head", "count", "all"], help="Materialization mode")
     args = p.parse_args()
@@ -37,7 +37,7 @@ def main() -> int:
     ]
     subprocess.run(cmd1, check=True, env=env)
 
-    # 2) Render Markdown from JSONL
+    # 2) Render Markdown from JSONL (main or smoke determined inside reporter/challenge logic)
     cmd2 = [
         "python",
         "scripts/reports/brc_report_from_jsonl.py",

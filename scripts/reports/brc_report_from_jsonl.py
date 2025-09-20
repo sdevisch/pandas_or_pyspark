@@ -17,14 +17,25 @@ def _read_jsonl(path: Path) -> List[Result]:
 def main() -> int:
     p = argparse.ArgumentParser(description="Render BRC report from JSONL results")
     p.add_argument("--in", dest="inp", required=True)
-    p.add_argument("--out", dest="out", default="reports/brc/billion_row_challenge.md")
+    p.add_argument("--out", dest="out", default="reports/brc/brc_1b_groupby.md")
     args = p.parse_args()
 
     path = Path(args.inp)
     outp = Path(args.out)
+    
+    results = _read_jsonl(path)
+    # If writing to default main report, auto-route small runs to smoke report
+    DEFAULT_MAIN = Path("reports/brc/brc_1b_groupby.md")
+    DEFAULT_SMOKE = Path("reports/brc/brc_smoke_groupby.md")
+    if outp == DEFAULT_MAIN:
+        try:
+            max_input = max(int(r.input_rows or 0) for r in results) if results else 0
+        except Exception:
+            max_input = 0
+        if max_input < 1_000_000_000:
+            outp = DEFAULT_SMOKE
     outp.parent.mkdir(parents=True, exist_ok=True)
 
-    results = _read_jsonl(path)
     # Filter to operation=groupby and latest per backend
     by_backend = {}
     for r in results:

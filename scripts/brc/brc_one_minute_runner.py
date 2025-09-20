@@ -15,7 +15,7 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 REPORTS = ROOT / "reports" / "brc"
 REPORTS.mkdir(parents=True, exist_ok=True)
-OUT = REPORTS / "brc_one_minute.md"
+OUT = REPORTS / "brc_under_1min_capacity.md"
 
 PY = sys.executable or "python3"
 SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"

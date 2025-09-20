@@ -102,7 +102,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
 REPORTS = ROOT / "reports" / "brc"
 REPORTS.mkdir(parents=True, exist_ok=True)
-OUT = REPORTS / "billion_row_challenge.md"
+OUT = REPORTS / "brc_1b_groupby.md"
 
 Backends = ALL_BACKENDS
 
@@ -461,6 +461,22 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
     mat_val = os.environ.get("BRC_MATERIALIZE", "head")
     source = _detect_source(chunks)
     input_rows = input_rows_override if input_rows_override is not None else _total_rows_from_parquet(chunks)
+    # Protect main report: if input rows are less than 1B, route to smoke report unless explicitly overridden
+    default_out = OUT
+    smoke_out = REPORTS / "brc_smoke_groupby.md"
+    effective_out = None
+    if md_out:
+        effective_out = Path(md_out)
+    else:
+        try:
+            inp = int(input_rows) if input_rows is not None else None
+        except Exception:
+            inp = None
+        if inp is not None and inp < 1_000_000_000:
+            effective_out = smoke_out
+        else:
+            effective_out = default_out
+    out_path = effective_out
     preface = [
         f"- operation: {op_val}",
         f"- materialize: {mat_val}",
@@ -468,6 +484,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         f"- total_bytes: {sum((p.stat().st_size for p in chunks if p.exists()), 0)}",
         f"- source: {source}",
         f"- input_rows: {input_rows if input_rows is not None else '-'}",
+        *( ["- note: routed to smoke report (< 1B input rows)"] if out_path.name == "billion_row_challenge_smoke.md" else [] ),
         *(_system_info_lines()),
         "",
     ]
@@ -480,7 +497,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
                 suffix_lines.extend(_build_groupby_preview_lines(chunks, r.backend))
         suffix_lines.extend(["```", ""])
         suffix = suffix_lines
-    out_path = Path(md_out) if md_out else OUT
+    
     if _MdReport is not None:
         rpt = _MdReport(out_path)
         rpt.title("Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""))
