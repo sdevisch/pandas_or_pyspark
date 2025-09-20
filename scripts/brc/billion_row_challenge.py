@@ -201,6 +201,8 @@ def parse_arguments():
     p.add_argument("--data-glob", default=None)
     p.add_argument("--only-backend", default=None)
     p.add_argument("--md-out", default=None)
+    p.add_argument("--jsonl-out", default=None)
+    p.add_argument("--no-md", action="store_true")
     return p.parse_args()
 
 
@@ -537,7 +539,29 @@ def main():
                             version=get_backend_version(backend),
                         )
                     )
-        write_report(chunks, results_local, args.md_out, append=append, title_suffix=title, input_rows_override=input_rows_total)
+        # Write JSONL if requested
+        if args.jsonl_out:
+            try:
+                from perfcore.result import Result as _PerfResult  # type: ignore
+                from perfcore.measure import write_results as _write_jsonl  # type: ignore
+                # Map local Result to PerfResult
+                perfs = []
+                for r in results_local:
+                    pr = _PerfResult.now(frontend="unipandas", backend=r.backend, operation="groupby")
+                    pr.input_rows = input_rows_total
+                    pr.read_seconds = float(r.read_s) if r.read_s is not None else None
+                    pr.compute_seconds = float(r.compute_s) if r.compute_s is not None else None
+                    pr.groups = r.groups
+                    pr.used_cores = r.used_cores
+                    pr.ok = r.compute_s is not None and r.read_s is not None
+                    perfs.append(pr)
+                from pathlib import Path as _Path
+                _write_jsonl(perfs, _Path(args.jsonl_out))
+            except Exception:
+                pass
+        # Optionally write Markdown
+        if not args.no_md:
+            write_report(chunks, results_local, args.md_out, append=append, title_suffix=title, input_rows_override=input_rows_total)
 
     backends_to_run = [args.only_backend] if args.only_backend else Backends
     # Always include placeholders so the report shows a full matrix even when a single backend is run
