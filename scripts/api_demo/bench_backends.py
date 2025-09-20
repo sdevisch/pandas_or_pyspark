@@ -248,8 +248,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--code-file", default=None, help="Optional path to the pandas code file processed")
     p.add_argument("--md-out", default=None, help="If set, write results as Markdown to this file")
     p.add_argument("--jsonl-out", default=None, help="If set, write results JSONL via perfcore to this file")
-    p.add_argument("--auto-rows", type=int, default=None, help="If set, generate a synthetic CSV with this many rows and use it")
-    p.add_argument("--use-existing-1m", action="store_true", help="Use data/bench_1000000.csv if present")
+    # Data generation is now handled by scripts/data_gen/generate_bench_csv.py
     p.add_argument("--materialize-rows", type=int, default=MATERIALIZE_ROWS_DEFAULT, help="Rows to materialize for compute timing")
     return p.parse_args()
 
@@ -342,29 +341,8 @@ def render_markdown(results: List["PerfResult"], args: argparse.Namespace, md_ou
 
 
 def _maybe_synthesize_data(args: argparse.Namespace) -> None:
-    """Optionally generate or pick a dataset based on CLI flags."""
-    if args.use_existing_1m:
-        candidate = Path(__file__).resolve().parents[2] / "data" / "bench_1000000.csv"
-        if candidate.exists():
-            args.path = str(candidate)
-        return
-    if args.auto_rows:
-        import csv as _csv, random as _random
-        data_dir = Path(__file__).resolve().parents[2] / "data"
-        data_dir.mkdir(exist_ok=True)
-        gen_path = data_dir / f"bench_{args.auto_rows}.csv"
-        if not gen_path.exists():
-            _random.seed(42)
-            with gen_path.open("w", newline="") as f:
-                w = _csv.writer(f)
-                w.writerow(["a", "b", "cat"])  # header
-                for _ in range(int(args.auto_rows)):
-                    w.writerow([
-                        _random.randint(-1000, 1000),
-                        _random.randint(-1000, 1000),
-                        _random.choice(["x", "y", "z"]),
-                    ])
-        args.path = str(gen_path)
+    """No-op: data generation moved to scripts/data_gen/generate_bench_csv.py."""
+    return
 
 
 def main() -> int:
