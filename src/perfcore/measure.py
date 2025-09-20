@@ -6,7 +6,6 @@ from time import perf_counter
 
 from .result import Result
 from unipandas import configure_backend
-from unipandas.io import read_parquet
 
 
 def _count_rows(obj) -> int:
@@ -43,7 +42,10 @@ def _count_rows(obj) -> int:
 
 
 def measure_once(frontend: str, backend: str, dataset_glob: str, materialize: str = "count") -> Result:
-    # For now, frontend is informational; we configure unipandas backend and run groupby-only
+    """Measure groupby performance using shared BRC helpers for consistency.
+
+    Frontend is currently informational; routing is via backend.
+    """
     r = Result.now(frontend=frontend, backend=backend, operation="groupby")
     try:
         import glob
@@ -54,26 +56,23 @@ def measure_once(frontend: str, backend: str, dataset_glob: str, materialize: st
     except Exception:
         chunk_paths = []
     try:
+        # Import BRC helpers (path-safe) to reuse consistent read/concat logic
+        try:
+            from scripts.brc.brc_shared import measure_read as _measure_read, run_operation as _run_operation  # type: ignore
+        except Exception:
+            import sys as _sys
+            from pathlib import Path as _Path
+            _here = _Path(__file__).resolve()
+            _sys.path.append(str(_here.parents[3] / "scripts" / "brc"))
+            from brc_shared import measure_read as _measure_read, run_operation as _run_operation  # type: ignore
+
         configure_backend(backend)
-        t0 = perf_counter()
-        frames = [read_parquet(str(p)) for p in chunk_paths]
-        t1 = perf_counter()
-        # Concat via pandas for simplicity; could route via scripts/brc helpers
-        import pandas as pd  # type: ignore
-        combined = pd.concat([f.to_backend() for f in frames]) if frames else pd.DataFrame()
-        r.read_seconds = t1 - t0
-        # Run groupby agg
-        t2 = perf_counter()
-        out = combined.groupby("cat").agg({"x": "sum", "y": "mean"}) if not combined.empty else combined
-        if materialize == "head":
-            materialize = "count"
-        if materialize == "count":
-            r.groups = _count_rows(out)
-        else:
-            _ = out.head(10_000)
-            r.groups = _count_rows(out)
-        t3 = perf_counter()
-        r.compute_seconds = t3 - t2
+        combined, read_s, _total_bytes = _measure_read(chunk_paths, backend)
+        r.read_seconds = float(read_s) if read_s is not None else None
+        # Run groupby via shared op (returns rows and compute seconds)
+        rows, compute_s = _run_operation(combined, "groupby", materialize)
+        r.groups = int(rows)
+        r.compute_seconds = float(compute_s)
         r.ok = True
     except Exception as e:
         r.ok = False
