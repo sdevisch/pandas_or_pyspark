@@ -11,13 +11,13 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _import_bench_module():
-    # Import bench_backends in a way that triggers script-mode imports (utils, etc.)
+def _import_bench_lib():
+    # Import bench_lib directly for running benchmarks without console/markdown
     scripts_api_demo = _repo_root() / "scripts" / "api_demo"
     if str(scripts_api_demo) not in sys.path:
         sys.path.insert(0, str(scripts_api_demo))
-    import bench_backends as bb  # type: ignore
-    return bb
+    import bench_lib as bl  # type: ignore
+    return bl
 
 
 def _make_tiny_csv(tmp_path: Path) -> str:
@@ -32,12 +32,12 @@ def _make_tiny_csv(tmp_path: Path) -> str:
 
 
 def test_run_backends_minimal(tmp_path: Path):
-    bb = _import_bench_module()
+    bl = _import_bench_lib()
     # Limit to pandas for fast, deterministic test
-    bb.Backends = ["pandas"]
+    bl.Backends = ["pandas"]
     csv_path = _make_tiny_csv(tmp_path)
 
-    results = bb.run_backends(csv_path, query=None, assign=False, groupby="cat")
+    results = bl.run_backends(csv_path, query=None, assign=False, groupby="cat", materialize_rows=1000)
     assert results, "Expected at least one result"
     r = results[0]
     # PerfResult.now fields
@@ -48,23 +48,26 @@ def test_run_backends_minimal(tmp_path: Path):
 
 
 def test_log_results_jsonl(tmp_path: Path):
-    bb = _import_bench_module()
-    bb.Backends = ["pandas"]
+    bl = _import_bench_lib()
+    bl.Backends = ["pandas"]
     csv_path = _make_tiny_csv(tmp_path)
 
-    results = bb.run_backends(csv_path, query=None, assign=False, groupby="cat")
+    results = bl.run_backends(csv_path, query=None, assign=False, groupby="cat", materialize_rows=1000)
     out = tmp_path / "bench.jsonl"
-    bb.log_results(results, str(out))
+    bl.log_results_jsonl(results, str(out))
     assert out.exists() and out.stat().st_size > 0
 
 
 def test_render_markdown(tmp_path: Path):
-    bb = _import_bench_module()
-    bb.Backends = ["pandas"]
+    bl = _import_bench_lib()
+    bl.Backends = ["pandas"]
     csv_path = _make_tiny_csv(tmp_path)
 
-    results = bb.run_backends(csv_path, query=None, assign=False, groupby="cat")
+    results = bl.run_backends(csv_path, query=None, assign=False, groupby="cat", materialize_rows=1000)
     md_out = tmp_path / "bench.md"
     args = SimpleNamespace(path=csv_path, assign=False, query=None, groupby="cat")
-    bb.render_markdown(results, args, str(md_out))
+    # Render via mdreport to keep reporting outside bench files
+    sys.path.insert(0, str((_repo_root() / "src")))
+    from mdreport.bench import render_bench_from_results  # type: ignore
+    render_bench_from_results(results, args, str(md_out))
     assert md_out.exists() and md_out.read_text().strip() != ""
