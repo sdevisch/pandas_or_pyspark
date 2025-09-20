@@ -13,6 +13,8 @@ Unified pandas-like API that runs with these backends:
 - pandas API on Spark (pyspark.pandas)
 - Polars
 - DuckDB
+- NumPy (experimental)
+- Numba (experimental)
 
 Select backend via environment variable or at runtime.
 
@@ -84,7 +86,7 @@ Usage
 Choose backend (env var or API):
 
 ```bash
-export UNIPANDAS_BACKEND=pandas    # or dask, pyspark, polars, duckdb
+export UNIPANDAS_BACKEND=pandas    # or dask, pyspark, polars, duckdb, numpy, numba
 ```
 
 ```python
@@ -120,7 +122,7 @@ Notes
 
 Benchmarking
 ------------
-Run the same workload across available backends and compare timings:
+Run the same workload across available backends and compare timings (front-ends: pandas, PySpark, Narwhals):
 
 ```bash
 python scripts/api_demo/bench_backends.py path/to/data.csv --assign --query "a > 0" --groupby a
@@ -140,18 +142,20 @@ Repository structure
     - `scripts/api_demo/relational_bench.py`: join/concat demos; writes `reports/api_demo/relational_api_demo.md`
     - `scripts/api_demo/compat_matrix.py`: generate a compatibility matrix; writes `reports/api_demo/compatibility.md`
   - Billion Row Challenge (under `scripts/brc/`, outputs in `reports/brc/`)
-    - `billion_row_challenge.py`: scalable scaffold (chunked Parquet/CSV, filter/groupby, materialization modes)
-    - `billion_row_om_runner.py`: order-of-magnitude runner with per-step timeout
-    - `brc_generate_data.py`, `brc_generate_all_scales.py`: data generation utilities
-    - `brc_scale_runner.py`, `brc_one_minute_runner.py`: convenience runners
+    - `billion_row_challenge.py`: groupby-only scaffold (Parquet-only). Routes <1B runs to `brc_smoke_groupby.md`, 1B runs to `brc_1b_groupby.md`. Supports `--jsonl-out` and `--no-md`.
+    - `billion_row_om_runner.py`: order-of-magnitude runner with per-step timeout, writes `brc_order_of_magnitude.md`
+    - `brc_one_minute_runner.py`: per-backend capacity under 1 minute, writes `brc_under_1min_capacity.md`
+    - `brc_jsonl_pipeline.py`: orchestrates JSONL-first run then renders Markdown via reporter
 
 - Reports (generated)
   - `reports/api_demo/demo_api_3_min.md`: aggregated results from `demo_api_3_min`
   - `reports/api_demo/api_demo_smoke.md`: smoke run summary
   - `reports/api_demo/compatibility.md`: fixed-width compatibility table
   - `reports/api_demo/relational_api_demo.md`: join/concat demo timings
-  - `reports/billion_row_challenge.md`: BRC scaffold output
-  - `reports/billion_row_om.md`: order-of-magnitude BRC results
+  - `reports/brc/brc_1b_groupby.md`: BRC 1B groupby report (main)
+  - `reports/brc/brc_smoke_groupby.md`: BRC smoke runs (<1B)
+  - `reports/brc/brc_order_of_magnitude.md`: OM results
+  - `reports/brc/brc_under_1min_capacity.md`: 1-minute capacity results
 
 Quick start
 -----------
@@ -170,10 +174,13 @@ Reporting is standardized via a small internal module (`mdreport`) that writes M
    `python scripts/api_demo/relational_bench.py`
 4) Compatibility matrix:
    `python scripts/api_demo/compat_matrix.py`
-5) Billion row challenge scaffold (groupby + count):
-   `python scripts/brc/billion_row_challenge.py --operation groupby --materialize count`
+5) Billion row challenge (groupby + count), JSONL-first:
+   `python scripts/brc/billion_row_challenge.py --data-glob "data/brc_scales/parquet_1000000000/*.parquet" --jsonl-out results/brc_1b_groupby.jsonl --no-md`
+   Render: `python scripts/reports/brc_report_from_jsonl.py --in results/brc_1b_groupby.jsonl --out reports/brc/brc_1b_groupby.md`
 6) Order-of-magnitude runner (per-step budget):
    `python scripts/brc/billion_row_om_runner.py --budgets 180`
+7) One-minute capacity:
+   `python scripts/brc/brc_one_minute_runner.py --budget 60`
 
 License
 -------
