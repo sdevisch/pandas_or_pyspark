@@ -22,14 +22,24 @@ if str(_SRC) not in sys.path:
 
 # No direct perfcore usage here; bench_lib handles JSONL writing
 
-# reporting helpers
-_HELPERS = Path(__file__).resolve().parents[1] / "reports"
-if str(_HELPERS) not in sys.path:
-    sys.path.insert(0, str(_HELPERS))
+# reporting helpers (prefer mdreport package)
 try:
-    from helpers import render_bench_markdown, fixed_table  # type: ignore
+    from mdreport.bench import render_bench_markdown  # type: ignore
 except Exception:
     render_bench_markdown = None  # type: ignore
+
+
+def fixed_table(headers: List[str], rows: List[List[str]], right_align_from: int = 2) -> List[str]:
+    widths = [max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))]
+    def fmt(vals: List[str]) -> str:
+        parts: List[str] = []
+        for i, v in enumerate(vals):
+            parts.append(v.ljust(widths[i]) if i < right_align_from else v.rjust(widths[i]))
+        return "  ".join(parts)
+    lines: List[str] = [fmt(headers), "  ".join('-' * w for w in widths)]
+    for row in rows:
+        lines.append(fmt(row))
+    return lines
 
 # Import shared bench library helpers
 _SCRIPTS = Path(__file__).resolve().parents[1]
@@ -92,20 +102,24 @@ def build_console_rows(results, availability):
     return build_rows(results, availability)
 
 
-def render_markdown(results, args: argparse.Namespace, md_out: Optional[str]) -> None:
+def _render_with_mdreport(results, args: argparse.Namespace, md_out: Optional[str]) -> None:
     if not md_out:
         return
     availability = get_availability()
     rows = build_rows(results, availability)
-    headers = HEADERS
     if render_bench_markdown is not None:
-        render_bench_markdown(md_out, args, availability, headers, rows)
+        render_bench_markdown(md_out, args, availability, HEADERS, rows)
+        print(f"\nWrote Markdown results to {md_out}")
     else:
         # Fallback inline minimal path
-        content = ["```text", *_format_fixed_width_table(headers, rows), "```", ""]
+        content = ["```text", *_format_fixed_width_table(HEADERS, rows), "```", ""]
         with open(md_out, "w") as f:
             f.write("\n".join(content))
-    print(f"\nWrote Markdown results to {md_out}")
+        print(f"\nWrote Markdown results to {md_out}")
+
+
+def render_markdown(results, args: argparse.Namespace, md_out: Optional[str]) -> None:  # backwards-compat for tests
+    _render_with_mdreport(results, args, md_out)
 
 
 def _maybe_synthesize_data(args: argparse.Namespace) -> None:
@@ -128,7 +142,7 @@ def _summarize_and_write(results, args) -> None:
     rows = build_console_rows(results, _availability())
     _print_console_summary(rows)
     write_jsonl_results(results, args.jsonl_out)
-    render_markdown(results, args, args.md_out)
+    _render_with_mdreport(results, args, args.md_out)
 
 
 def results_are_empty(results) -> bool:
