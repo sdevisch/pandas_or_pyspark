@@ -22,9 +22,19 @@ def main() -> int:
 
     path = Path(args.inp)
     outp = Path(args.out)
-    outp.parent.mkdir(parents=True, exist_ok=True)
 
     results = _read_jsonl(path)
+    # If writing to default main report, auto-route small runs to smoke report
+    DEFAULT_MAIN = Path("reports/brc/billion_row_challenge.md")
+    DEFAULT_SMOKE = Path("reports/brc/billion_row_challenge_smoke.md")
+    if outp == DEFAULT_MAIN:
+        try:
+            max_input = max(int(r.input_rows or 0) for r in results) if results else 0
+        except Exception:
+            max_input = 0
+        if max_input < 1_000_000_000:
+            outp = DEFAULT_SMOKE
+    outp.parent.mkdir(parents=True, exist_ok=True)
     # Filter to operation=groupby and latest per backend
     by_backend = {}
     for r in results:
