@@ -16,7 +16,7 @@ Actions
    - perfcore/frontends registry; enhance measure CLI help
    - Document how to add a new frontend adapter
 4) Demos
-   - Keep demo_api_3_min but link to perf matrix and BRC
+   - Remove demo_api_3_min; recommend running individual scripts or `scripts/api_demo/demo_runner.py`
 5) Housekeeping
    - Ensure default outputs don’t overwrite main BRC unless 1B
    - Route small runs to smoke

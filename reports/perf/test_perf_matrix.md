@@ -1,6 +1,6 @@
 # Performance matrix
 
-Generated at: 2025-09-20 13:07:41
+Generated at: 2025-09-20 13:36:43
 
 ```text
 frontend/backend  duckdb  pandas  polars

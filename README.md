@@ -158,7 +158,6 @@ Repository structure
     - `brc_jsonl_pipeline.py`: orchestrates JSONL-first run then renders Markdown via reporter
 
 - Reports (generated)
-  - `reports/api_demo/demo_api_3_min.md`: aggregated results from `demo_api_3_min`
   - `reports/api_demo/api_demo_smoke.md`: smoke run summary
   - `reports/api_demo/compatibility.md`: fixed-width compatibility table
   - `reports/api_demo/relational_api_demo.md`: join/concat demo timings
