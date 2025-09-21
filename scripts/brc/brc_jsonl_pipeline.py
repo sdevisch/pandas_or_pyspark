@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import subprocess
 from pathlib import Path
 
@@ -25,7 +26,7 @@ def main() -> int:
 
     # 1) Run BRC to JSONL only
     cmd1 = [
-        "python",
+        sys.executable,
         "scripts/brc/billion_row_challenge.py",
         "--data-glob",
         args.data_glob,
@@ -39,7 +40,7 @@ def main() -> int:
 
     # 2) Render Markdown from JSONL (main or smoke determined inside reporter/challenge logic)
     cmd2 = [
-        "python",
+        sys.executable,
         "scripts/reports/brc_report_from_jsonl.py",
         "--in",
         args.jsonl_out,

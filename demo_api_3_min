@@ -7,10 +7,17 @@ All formatting, IO, and subprocess logic lives in dedicated modules.
 
 from __future__ import annotations
 
+import argparse
 import sys
 
-from scripts.api_demo.demo_args import parse_args  # type: ignore
 from scripts.api_demo.demo_runner import run_demo_flow  # type: ignore
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Run the 3-minute unipandas API demo")
+    p.add_argument("--budget-s", type=float, default=180, help="Time budget in seconds")
+    p.add_argument("--out", default=str("reports/api_demo/demo_api_3_min.md"), help="Markdown report path")
+    return p.parse_args()
 
 
 def main() -> int:

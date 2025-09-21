@@ -13,31 +13,12 @@ from typing import List
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-try:
-    from .brc_paths import REPORTS_BRC as REPORTS, REPORT_1MIN as OUT  # type: ignore
-except Exception:
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _here = _Path(__file__).resolve()
-        _sys.path.append(str(_here.parent))
-        from brc_paths import REPORTS_BRC as REPORTS, REPORT_1MIN as OUT  # type: ignore
-    except Exception:
-        REPORTS = ROOT / "reports" / "brc"
-        OUT = REPORTS / "brc_under_1min_capacity.md"
-REPORTS.mkdir(parents=True, exist_ok=True)
+from scripts.brc.brc_paths import REPORTS_BRC as REPORTS, REPORT_1MIN as OUT  # type: ignore
 
 PY = sys.executable or "python3"
 SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 
-# Canonical backends list from scripts/utils.py
-try:
-    from scripts.utils import Backends as Backends  # type: ignore
-except Exception:
-    import sys as _sys
-    from pathlib import Path as _Path
-    _sys.path.append(str(_Path(__file__).resolve().parents[1]))
-    from utils import Backends as Backends  # type: ignore
+from scripts.utils import Backends as Backends  # type: ignore
 
 SCALES = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 

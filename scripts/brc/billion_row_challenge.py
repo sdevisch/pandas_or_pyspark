@@ -66,70 +66,36 @@ import os as _os
 
 from unipandas import configure_backend
 from unipandas.frame import Frame
-try:
-    from .brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
-    from .brc_core import compute_op_and_count  # type: ignore
-except Exception:
-    # Allow running as a standalone script
-    from brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
-    from brc_core import compute_op_and_count  # type: ignore
-try:
-    from .utils import (
-        get_backend_version as utils_get_backend_version,
-        used_cores_for_backend as utils_used_cores_for_backend,
-        check_available as utils_check_available,
-        format_fixed as utils_format_fixed,
-        Backends as ALL_BACKENDS,
-    )
-except Exception:
-    # Allow running as a standalone script
-    import sys as _sys
-    from pathlib import Path as _Path
 
-    _here = _Path(__file__).resolve()
-    # Add both 'scripts/brc' and 'scripts' to sys.path so we can import utils
-    _sys.path.append(str(_here.parents[0]))  # scripts/brc
-    _sys.path.append(str(_here.parents[1]))  # scripts
-    from utils import (  # type: ignore
-        get_backend_version as utils_get_backend_version,
-        used_cores_for_backend as utils_used_cores_for_backend,
-        check_available as utils_check_available,
-        format_fixed as utils_format_fixed,
-        Backends as ALL_BACKENDS,
-    )
+# Absolute imports with project root/src on path
+import sys as _sys
+from pathlib import Path as _Path
+
+_ROOT = _Path(__file__).resolve().parents[2]
+_SRC = _ROOT / "src"
+if str(_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_ROOT))
+if str(_SRC) not in _sys.path:
+    _sys.path.insert(0, str(_SRC))
+
+from scripts.brc.brc_shared import read_frames_for_backend, concat_frames, measure_read, run_operation  # type: ignore
+from scripts.brc.brc_core import compute_op_and_count  # type: ignore
+from scripts.utils import (
+    get_backend_version as utils_get_backend_version,
+    used_cores_for_backend as utils_used_cores_for_backend,
+    check_available as utils_check_available,
+    format_fixed as utils_format_fixed,
+    Backends as ALL_BACKENDS,
+)  # type: ignore
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data"
-try:
-    from .brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
-except Exception:
-    # Allow running as a standalone script/module import without package context
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _here = _Path(__file__).resolve()
-        _sys.path.append(str(_here.parent))  # scripts/brc
-        from brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
-    except Exception:
-        # Fallback to local construction
-        REPORTS = ROOT / "reports" / "brc"
-        OUT = REPORTS / "brc_1b_groupby.md"
-REPORTS.mkdir(parents=True, exist_ok=True)
+from scripts.brc.brc_paths import REPORTS_BRC as REPORTS, REPORT_MAIN as OUT  # type: ignore
 
 Backends = ALL_BACKENDS
 
 
-# Try to import mdreport for standardized Markdown writing
-try:  # First attempt: assume package available on sys.path
-    from mdreport import Report as _MdReport  # type: ignore
-except Exception:
-    try:
-        _src = ROOT / "src"
-        if str(_src) not in sys.path:
-            sys.path.insert(0, str(_src))
-        from mdreport import Report as _MdReport  # type: ignore
-    except Exception:  # Fallback shim: define a tiny wrapper using utils formatter
-        _MdReport = None  # type: ignore
+from mdreport import Report as _MdReport  # type: ignore
 
 
 def _chunks_out_dir(rows_per_chunk: int) -> Path:
@@ -500,6 +466,7 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         else:
             effective_out = default_out
     out_path = effective_out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     preface = [
         f"- operation: {op_val}",
         f"- materialize: {mat_val}",
@@ -521,32 +488,13 @@ def write_report(chunks: List[Path], results: List[Result], md_out: Optional[str
         suffix_lines.extend(["```", ""])
         suffix = suffix_lines
     
-    if _MdReport is not None:
-        rpt = _MdReport(out_path)
-        rpt.title("Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""))
-        rpt.preface(preface)
-        rpt.table(headers, rows, align_from=3, style="fixed")
-        if suffix:
-            rpt.suffix(suffix)
-        rpt.write(append=append)
-    else:
-        # Fallback to existing utils writer if mdreport is not importable
-        if append and out_path.exists():
-            existing = out_path.read_text()
-            out_path.write_text(existing + "\n\n")
-        try:
-            from scripts.utils import write_fixed_markdown as _write  # type: ignore
-        except Exception:
-            from utils import write_fixed_markdown as _write  # type: ignore
-        _write(
-            out_path=out_path,
-            title="Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""),
-            headers=headers,
-            rows=rows,
-            preface_lines=preface,
-            right_align_from=3,
-            suffix_lines=suffix,
-        )
+    rpt = _MdReport(out_path)
+    rpt.title("Billion Row Challenge (scaffold)" + (f" - {title_suffix}" if title_suffix else ""))
+    rpt.preface(preface)
+    rpt.table(headers, rows, align_from=3, style="fixed")
+    if suffix:
+        rpt.suffix(suffix)
+    rpt.write(append=append)
 
 def main():
     args = parse_arguments()
@@ -615,7 +563,7 @@ def main():
     # Always include placeholders so the report shows a full matrix even when a single backend is run
     include_ph = True
     run_for_op(append=False, title="groupby", include_placeholders=include_ph)
-    print(f"Ran BRC (groupby) with materialize={args.materialize}")
+    # No console output in orchestrator per .cursorrules
 
 
 if __name__ == "__main__":
