@@ -24,32 +24,13 @@ PY = sys.executable or "python3"
 SCRIPT = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
 
 from scripts.utils import Backends as Backends  # type: ignore
+from scripts.brc.one_minute_lib import can_process_within  # type: ignore
 
 # Sizes to attempt (rows). Stop escalating once a step fails for a backend.
 SCALES = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000]
 
 
-def can_process_within(backend: str, rows: int, budget_s: float, data_glob: str | None = None) -> tuple[bool, float]:
-    env = os.environ.copy()
-    env["UNIPANDAS_BACKEND"] = backend
-    glob_arg = data_glob
-    if not glob_arg:
-        # Prefer pre-generated parquet globs when available
-        scales_dir = ROOT / "data" / "brc_scales" / f"parquet_{rows}"
-        if scales_dir.exists() and any(scales_dir.glob("*.parquet")):
-            glob_arg = str(scales_dir / "*.parquet")
-    cmd = [PY, str(SCRIPT)]
-    if glob_arg:
-        cmd += ["--data-glob", glob_arg]
-    cmd += ["--only-backend", backend, "--materialize", "count", "--no-md"]
-    start = subprocess.time.time() if hasattr(subprocess, "time") else __import__("time").perf_counter()
-    try:
-        subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=budget_s)
-        elapsed = (__import__("time").perf_counter() - start)
-        return True, elapsed
-    except Exception:
-        elapsed = (__import__("time").perf_counter() - start)
-        return False, elapsed
+ 
 
 
 def main() -> int:
