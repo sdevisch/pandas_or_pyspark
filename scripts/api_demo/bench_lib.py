@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-"""Shared helpers for bench_backends: small, readable, testable functions."""
+"""Shared helpers for bench_backends: small, readable, testable functions.
+
+Imports use absolute paths; no try/except fallbacks.
+"""
 
 import os
 import sys
@@ -10,36 +13,30 @@ from typing import Dict, List, Optional
 
 from unipandas import configure_backend, read_csv
 
-# Import utils whether run as module or script
-try:
-    from .utils import (
-        Backends as ALL_BACKENDS,
-        get_backend_version as utils_get_backend_version,
-        check_available as utils_check_available,
-        used_cores_for_backend as utils_used_cores_for_backend,
-    )
-except Exception:  # script mode
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from utils import (  # type: ignore
-        Backends as ALL_BACKENDS,
-        get_backend_version as utils_get_backend_version,
-        check_available as utils_check_available,
-        used_cores_for_backend as utils_used_cores_for_backend,
-    )
-
-
-Backends = ALL_BACKENDS
-
-# perfcore IO (optional)
+# Ensure project root and src are on sys.path for absolute imports
 _ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 _SRC = _ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
+
+from scripts.utils import (  # type: ignore
+    Backends as ALL_BACKENDS,
+    get_backend_version as utils_get_backend_version,
+    check_available as utils_check_available,
+    used_cores_for_backend as utils_used_cores_for_backend,
+)
+
+# perfcore IO (optional)
 try:
     from perfcore.result import Result as PerfResult, write_results as perf_write_results  # type: ignore
 except Exception:
     PerfResult = None  # type: ignore
     perf_write_results = None  # type: ignore
+
+
+Backends = ALL_BACKENDS
 
 
 def _used_cores_for_backend(backend: str) -> Optional[int]:
