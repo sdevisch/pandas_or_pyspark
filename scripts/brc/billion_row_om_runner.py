@@ -87,33 +87,17 @@ except Exception:
 # Repository root (two levels up from this file) so paths are stable regardless
 # of the current working directory from which the script is invoked.
 ROOT = Path(__file__).resolve().parents[2]
+# Ensure repo root on sys.path when executed standalone
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# Reports live under reports/brc. Create the directory eagerly to avoid race
-# conditions later on when writing files in subprocess-driven flows.
-try:
-    from .brc_paths import REPORTS_BRC as REPORTS, REPORT_OM as OUT  # type: ignore
-except Exception:
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _here = _Path(__file__).resolve()
-        _sys.path.append(str(_here.parent))
-        from brc_paths import REPORTS_BRC as REPORTS, REPORT_OM as OUT  # type: ignore
-    except Exception:
-        REPORTS = ROOT / "reports" / "brc"
-        OUT = REPORTS / "brc_order_of_magnitude.md"
+from scripts.brc.brc_paths import REPORTS_BRC as REPORTS, REPORT_OM as OUT  # type: ignore
 REPORTS.mkdir(parents=True, exist_ok=True)
 
 PY = sys.executable or "python3"  # Use current interpreter; fallback to python3
 
 # Canonical backends list from scripts/utils.py
-try:
-    from scripts.utils import Backends as Backends  # type: ignore
-except Exception:
-    import sys as _sys
-    from pathlib import Path as _Path
-    _sys.path.append(str(_Path(__file__).resolve().parents[1]))
-    from utils import Backends as Backends  # type: ignore
+from scripts.utils import Backends as Backends  # type: ignore
 
 # We delegate real work to the single-source-of-truth challenge script and only
 # orchestrate/measure here to avoid duplicate logic.

@@ -5,18 +5,16 @@ from typing import List, Tuple
 import time
 
 from unipandas import configure_backend
-try:
-    # Package-style import
-    from .brc_shared import read_frames_for_backend, concat_frames, measure_read  # type: ignore
-except Exception:
-    # Script-style fallback
-    import sys as _sys
-    from pathlib import Path as _Path
 
-    _here = _Path(__file__).resolve()
-    _sys.path.append(str(_here.parents[0]))  # scripts/brc
-    _sys.path.append(str(_here.parents[1]))  # scripts
-    from brc_shared import read_frames_for_backend, concat_frames, measure_read  # type: ignore
+# Absolute imports with project root on path
+import sys as _sys
+from pathlib import Path as _Path
+
+_ROOT = _Path(__file__).resolve().parents[2]
+if str(_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_ROOT))
+
+from scripts.brc.brc_shared import read_frames_for_backend, concat_frames, measure_read  # type: ignore
 
 
 def combine_chunks(chunks: List[Path], backend: str):
@@ -31,7 +29,7 @@ def compute_op_and_count(combined, op: str, materialize: str) -> Tuple[int, floa
         materialize = "count"
     if materialize == "count":
         backend_obj = out.to_backend()
-        from scripts.brc.billion_row_challenge import _materialize_count  # type: ignore
+        from scripts.brc.brc_shared import _materialize_count  # type: ignore
 
         rows = _materialize_count(backend_obj)
     else:
