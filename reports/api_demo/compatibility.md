@@ -1,8 +1,8 @@
 # Compatibility matrix
 
-Generated at: 2025-09-21 14:10:56
+Generated at: 2025-09-21 14:36:35
 
-Generated at: 2025-09-21 14:10:56
+Generated at: 2025-09-21 14:36:35
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
 - CPU cores: 11
 

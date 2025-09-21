@@ -20,6 +20,26 @@ def can_process_within(backend: str, rows: int, budget_s: float, operation: str 
         scales_dir = ROOT / "data" / "brc_scales" / f"parquet_{rows}"
         if scales_dir.exists() and any(scales_dir.glob("*.parquet")):
             glob_arg = str(scales_dir / "*.parquet")
+        else:
+            # Fallback: synthesize a tiny parquet for this rows value
+            try:
+                import pandas as _pd  # type: ignore
+                tmp_dir = ROOT / "data" / f"brc_tmp_{max(1, rows)}"
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                p = tmp_dir / "generated.parquet"
+                if not p.exists():
+                    r = __import__("random").Random(42)
+                    n = max(1, rows)
+                    pdf = _pd.DataFrame({
+                        "id": list(range(n)),
+                        "x": [r.randint(-10, 10) for _ in range(n)],
+                        "y": [r.randint(-10, 10) for _ in range(n)],
+                        "cat": [r.choice(["x", "y", "z"]) for _ in range(n)],
+                    })
+                    pdf.to_parquet(str(p), index=False)
+                glob_arg = str(tmp_dir / "*.parquet")
+            except Exception:
+                glob_arg = None
     cmd = [PY, str(SCRIPT)]
     if glob_arg:
         cmd += ["--data-glob", glob_arg]
