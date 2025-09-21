@@ -87,6 +87,9 @@ except Exception:
 # Repository root (two levels up from this file) so paths are stable regardless
 # of the current working directory from which the script is invoked.
 ROOT = Path(__file__).resolve().parents[2]
+# Ensure repo root on sys.path when executed standalone
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from scripts.brc.brc_paths import REPORTS_BRC as REPORTS, REPORT_OM as OUT  # type: ignore
 REPORTS.mkdir(parents=True, exist_ok=True)

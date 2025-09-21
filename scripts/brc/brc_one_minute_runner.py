@@ -13,6 +13,9 @@ from typing import List
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
+import sys as _sys
+if str(ROOT) not in _sys.path:
+    _sys.path.insert(0, str(ROOT))
 from scripts.brc.brc_paths import REPORTS_BRC as REPORTS, REPORT_1MIN as OUT  # type: ignore
 
 PY = sys.executable or "python3"

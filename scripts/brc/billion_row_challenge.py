@@ -502,9 +502,10 @@ def main():
     os.environ["BRC_MATERIALIZE"] = args.materialize
     chunks = resolve_chunks(args)
     results: List[Result] = []
-    # Build rows for all known backends, including unavailable ones, so the
-    # report always shows a complete matrix of backends with their status.
-    availability = {b: check_available(b) for b in Backends}
+    # Determine which backends to run first
+    backends_to_run = [args.only_backend] if args.only_backend else Backends
+    # Only probe availability for selected backends to avoid costly imports
+    availability = {b: check_available(b) for b in backends_to_run}
     def run_for_op(*, append: bool, title: str, include_placeholders: bool) -> None:
         results_local: List[Result] = []
         input_rows_total = _compute_input_rows_general(chunks, args)
@@ -559,7 +560,6 @@ def main():
         if not args.no_md:
             write_report(chunks, results_local, args.md_out, append=append, title_suffix=title, input_rows_override=input_rows_total)
 
-    backends_to_run = [args.only_backend] if args.only_backend else Backends
     # Always include placeholders so the report shows a full matrix even when a single backend is run
     include_ph = True
     run_for_op(append=False, title="groupby", include_placeholders=include_ph)
