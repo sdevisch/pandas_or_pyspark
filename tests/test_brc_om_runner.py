@@ -11,15 +11,15 @@ def test_run_once_parses_timings_pandas():
 
     entry = run_once("pandas", 1_000, 15.0)
     assert entry.ok is True
-    # read_s and compute_s should be floats when parsing the report
+    # read_s and compute_s should be floats or None
     assert entry.read_s is None or isinstance(entry.read_s, float)
     assert entry.compute_s is None or isinstance(entry.compute_s, float)
 
 
 def test_count_input_rows_matches_parquet_metadata(tmp_path):
-    # Import the helper directly from the runner module
+    # Use canonical helper from challenge
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "brc"))
-    from billion_row_om_runner import _count_input_rows  # type: ignore
+    from billion_row_challenge import _count_input_rows  # type: ignore
 
     import pyarrow as pa  # type: ignore
     import pyarrow.parquet as pq  # type: ignore

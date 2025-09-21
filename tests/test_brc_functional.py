@@ -12,7 +12,7 @@ def _add_brc_to_path():
 @pytest.mark.timeout(60)
 def test_can_process_within_groupby_pandas(tmp_path: Path):
     _add_brc_to_path()
-    from brc_one_minute_runner import can_process_within  # type: ignore
+    from one_minute_lib import can_process_within  # type: ignore
 
     ok, elapsed = can_process_within("pandas", 2_000, 20.0, "groupby", None)
     assert ok
@@ -21,7 +21,7 @@ def test_can_process_within_groupby_pandas(tmp_path: Path):
 @pytest.mark.timeout(60)
 def test_can_process_within_with_parquet_data_glob_pandas(tmp_path: Path):
     _add_brc_to_path()
-    from brc_one_minute_runner import can_process_within  # type: ignore
+    from one_minute_lib import can_process_within  # type: ignore
 
     # Create tiny parquet dataset compatible with challenge schema
     out_dir = tmp_path / "parq"
