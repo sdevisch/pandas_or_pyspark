@@ -1,64 +1,64 @@
 # Billion Row Challenge (scaffold) - groupby
 
-Generated at: 2025-09-20 13:09:53
+Generated at: 2025-09-21 11:45:00
 
 - operation: groupby
 - materialize: count
 - num_chunks: 1
-- total_bytes: 106530
+- total_bytes: 17397
 - source: parquet
-- input_rows: 10000
+- input_rows: 1000
 - Python: `3.9.6` on `macOS-15.6.1-arm64-arm-64bit`
 - CPU cores: 11
 
 ```text
-backend  version   op       read_s  compute_s   rows  used_cores  groups
--------  --------  -------  ------  ---------  -----  ----------  ------
-numba    0.60.0    groupby  0.0023     0.0006  10000           1       3
-pandas   2.2.2     groupby       -          -      -           -       -
-dask     2024.5.1  groupby       -          -      -           -       -
-pyspark  3.5.1     groupby       -          -      -           -       -
-polars   1.33.0    groupby       -          -      -           -       -
-duckdb   1.3.2     groupby       -          -      -           -       -
-numpy    1.26.4    groupby       -          -      -           -       -
+backend  version   op       read_s  compute_s  rows  used_cores  groups
+-------  --------  -------  ------  ---------  ----  ----------  ------
+numba    0.60.0    groupby  0.0020     0.0005  1000           1       3
+pandas   2.2.2     groupby       -          -     -           -       -
+dask     2024.5.1  groupby       -          -     -           -       -
+pyspark  3.5.1     groupby       -          -     -           -       -
+polars   1.33.0    groupby       -          -     -           -       -
+duckdb   1.3.2     groupby       -          -     -           -       -
+numpy    1.26.4    groupby       -          -     -           -       -
 ```
 
 Groupby result preview (by backend):
 
 ```text
-backend  cat       x                    y
--------  ---  ------  -------------------
-numba    x     25733  -11.969814704124328
-numba    y    -60499  -11.777341389728097
-numba    z     65563     9.92494019138756
-backend  cat       x                    y
--------  ---  ------  -------------------
-pandas   x     25733  -11.969814704124328
-pandas   y    -60499  -11.777341389728097
-pandas   z     65563     9.92494019138756
-backend  cat       x                    y
--------  ---  ------  -------------------
-dask     x     25733  -11.969814704124328
-dask     y    -60499  -11.777341389728097
-dask     z     65563     9.92494019138756
-backend  cat       x                    y
--------  ---  ------  -------------------
-pyspark  x     25733  -11.969814704124328
-pyspark  y    -60499  -11.777341389728097
-pyspark  z     65563     9.92494019138756
-backend  cat       x                    y
--------  ---  ------  -------------------
-polars   x     25733  -11.969814704124328
-polars   y    -60499  -11.777341389728097
-polars   z     65563     9.92494019138756
-backend  cat       x                    y
--------  ---  ------  -------------------
-duckdb   x     25733  -11.969814704124328
-duckdb   y    -60499  -11.777341389728097
-duckdb   z     65563     9.92494019138756
-backend  cat       x                    y
--------  ---  ------  -------------------
-numpy    x     25733  -11.969814704124328
-numpy    y    -60499  -11.777341389728097
-numpy    z     65563     9.92494019138756
+backend  cat      x                   y
+-------  ---  -----  ------------------
+numba    x    -8780   53.38291139240506
+numba    y     7896  2.1432664756446993
+numba    z     3211   9.814925373134328
+backend  cat      x                   y
+-------  ---  -----  ------------------
+pandas   x    -8780   53.38291139240506
+pandas   y     7896  2.1432664756446993
+pandas   z     3211   9.814925373134328
+backend  cat      x                   y
+-------  ---  -----  ------------------
+dask     x    -8780   53.38291139240506
+dask     y     7896  2.1432664756446993
+dask     z     3211   9.814925373134328
+backend  cat      x                   y
+-------  ---  -----  ------------------
+pyspark  x    -8780   53.38291139240506
+pyspark  y     7896  2.1432664756446993
+pyspark  z     3211   9.814925373134328
+backend  cat      x                   y
+-------  ---  -----  ------------------
+polars   x    -8780   53.38291139240506
+polars   y     7896  2.1432664756446993
+polars   z     3211   9.814925373134328
+backend  cat      x                   y
+-------  ---  -----  ------------------
+duckdb   x    -8780   53.38291139240506
+duckdb   y     7896  2.1432664756446993
+duckdb   z     3211   9.814925373134328
+backend  cat      x                   y
+-------  ---  -----  ------------------
+numpy    x    -8780   53.38291139240506
+numpy    y     7896  2.1432664756446993
+numpy    z     3211   9.814925373134328
 ```

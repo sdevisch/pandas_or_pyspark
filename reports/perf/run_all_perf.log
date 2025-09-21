@@ -1,0 +1,3 @@
+Starting perf at Sat Sep 20 14:56:21 EDT 2025
+
+==> /Users/sdevisch/venvs/pandas_pyspark/bin/python /Users/sdevisch/repos/pandas_or_pyspark/scripts/brc/billion_row_challenge.py --data-glob /Users/sdevisch/repos/pandas_or_pyspark/data/brc_scales/parquet_1000000000/*.parquet --jsonl-out /Users/sdevisch/repos/pandas_or_pyspark/results/brc/brc_1b_groupby.jsonl --no-md
