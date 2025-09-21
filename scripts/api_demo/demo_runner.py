@@ -2,24 +2,19 @@ from __future__ import annotations
 
 """Runner for the 3-minute unipandas API demo flow.
 
-This module encapsulates all non-orchestration work for the demo: data
-preparation, invoking sub-scripts, and writing the aggregated Markdown
-report. The CLI entrypoint should only import `parse_args` and call
-`run_demo_flow`.
+This module orchestrates the demo flow steps and delegates all
+markdown/formatting to `src/mdreport`. It avoids side effects at import
+time and keeps helpers small and focused.
 """
 
-import os
 import sys
 import time
-import platform
 from pathlib import Path
-from datetime import datetime
 from typing import List, Optional
 
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORTS = ROOT / "reports" / "api_demo"
-REPORTS.mkdir(parents=True, exist_ok=True)
 
 BENCH = ROOT / "scripts" / "api_demo" / "bench_backends.py"
 COMPAT = ROOT / "scripts" / "api_demo" / "compat_matrix.py"
@@ -31,35 +26,67 @@ PIPELINE = ROOT / "scripts" / "brc" / "brc_jsonl_pipeline.py"
 
 PY = sys.executable or "python3"
 
-# Centralized tiny data helpers
-from scripts.data_gen.demo_data import ensure_smoke_csv, ensure_tiny_parquet_glob  # type: ignore
 
 def _smoke_csv() -> Path:
-    return ensure_smoke_csv(ROOT)
+    """Return a small CSV sample that exists in the repo.
+
+    Prefers `data/smoke.csv`, falling back to other bundled small CSVs.
+    """
+    candidates = [
+        ROOT / "data" / "smoke.csv",
+        ROOT / "scripts" / "data" / "compat_small.csv",
+        ROOT / "data" / "compat_small.csv",
+        ROOT / "data" / "example_small.csv",
+        ROOT / "data" / "example.csv",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    raise FileNotFoundError("No small CSV sample found in data directory")
 
 
 def _tiny_parquet_glob(rows: int = 1000) -> str:
-    return ensure_tiny_parquet_glob(ROOT, rows)
+    """Return a parquet glob pointing to a tiny dataset for BRC smoke.
+
+    Tries `data/brc_tmp_<rows>/*.parquet`, then `data/brc_<rows>/*.parquet`,
+    finally any single known parquet under `data/gen_smoke` as last resort.
+    """
+    tmp_dir = ROOT / "data" / f"brc_tmp_{rows}"
+    if tmp_dir.exists():
+        return str(tmp_dir / "*.parquet")
+    scale_dir = ROOT / "data" / f"brc_{rows}"
+    if scale_dir.exists():
+        return str(scale_dir / "*.parquet")
+    gen_smoke = ROOT / "data" / "gen_smoke"
+    if gen_smoke.exists():
+        return str(gen_smoke / "*.parquet")
+    # Fallback to any parquet under data (kept tiny by caller's rows)
+    return str(ROOT / "data" / "**" / "*.parquet")
 
 
 def _append_lines(report_path: Path, lines: List[str]) -> None:
-    with report_path.open("a") as f:
-        f.write("\n".join(lines) + "\n")
+    """Append lines via mdreport helper to keep markdown logic centralized."""
+    from mdreport.report import append_lines as md_append_lines  # type: ignore
+
+    md_append_lines(report_path, lines)
 
 
 def _append_section(report_path: Path, title: str, md_part: Path) -> None:
-    with report_path.open("a") as f:
-        f.write(f"\n## {title}\n\n")
-        f.write(md_part.read_text())
+    """Append a section from a fragment using mdreport helper."""
+    from mdreport.report import append_section_from_file  # type: ignore
+
+    append_section_from_file(report_path, title, md_part)
 
 
 def _run(command: List[str]) -> None:
+    """Run a subprocess command and raise on failure."""
     import subprocess as _sp
 
     _sp.run(command, check=True)
 
 
 def _run_with_timeout(command: List[str], timeout_s: float) -> bool:
+    """Run a command with a timeout; return True if completed, else False."""
     import subprocess as _sp
 
     try:
@@ -70,23 +97,25 @@ def _run_with_timeout(command: List[str], timeout_s: float) -> bool:
 
 
 def _init_report(path: Path) -> None:
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with path.open("w") as f:
-        f.write("# unipandas API demos\n\n")
-        f.write(f"Generated at: {ts}\n\n")
-        f.write(f"- Python: `{platform.python_version()}` on `{platform.platform()}`\n")
-        f.write(f"- CPU cores: {os.cpu_count()}\n\n")
+    """Create the top-level demo report using mdreport header helper."""
+    from mdreport.report import write_simple_header, system_info  # type: ignore
+
+    preface = list(system_info())
+    write_simple_header(path, title="unipandas API demos", preface_lines=preface)
 
 
 def _deadline_passed(deadline: float) -> bool:
+    """Return True if the time budget is exhausted."""
     return time.perf_counter() >= deadline
 
 
 def _remaining(deadline: float, cap: float) -> float:
+    """Compute safe remaining time, capped and lower-bounded for stability."""
     return min(cap, max(1.0, deadline - time.perf_counter()))
 
 
 def _maybe_bench(report: Path, sample: Path, deadline: float) -> None:
+    """Run bench smoke and attach results if budget allows."""
     if _deadline_passed(deadline):
         return
     frag = REPORTS / "api_demo_smoke.md"
@@ -107,6 +136,7 @@ def _maybe_bench(report: Path, sample: Path, deadline: float) -> None:
 
 
 def _maybe_compat(report: Path, deadline: float) -> None:
+    """Run compatibility matrix and attach section if within budget."""
     if _deadline_passed(deadline):
         return
     frag = REPORTS / "compatibility.md"
@@ -116,6 +146,7 @@ def _maybe_compat(report: Path, deadline: float) -> None:
 
 
 def _maybe_rel(report: Path, deadline: float) -> None:
+    """Run relational API demo and attach section if within budget."""
     if _deadline_passed(deadline):
         return
     frag = REPORTS / "relational_api_demo.md"
@@ -125,6 +156,7 @@ def _maybe_rel(report: Path, deadline: float) -> None:
 
 
 def _maybe_brc_smoke(report: Path, deadline: float) -> None:
+    """Run a tiny BRC groupby and attach section if finished in time."""
     if _deadline_passed(deadline):
         return
     tiny_glob = _tiny_parquet_glob(1000)
@@ -150,18 +182,26 @@ def _maybe_brc_smoke(report: Path, deadline: float) -> None:
 
 
 def _maybe_brc_one_minute(deadline: float) -> None:
+    """Try the BRC one-minute runner within a 30s slice."""
     if _deadline_passed(deadline):
         return
     _run_with_timeout([PY, str(BRC_1M), "--budget", "30"], _remaining(deadline, 30.0))
 
 
 def _maybe_brc_om(deadline: float) -> None:
+    """Try the order-of-magnitude BRC runner within a 30s slice."""
     if _deadline_passed(deadline):
         return
     _run_with_timeout([PY, str(BRC_OM), "--budgets", "30"], _remaining(deadline, 30.0))
 
 
 def run_demo_flow(budget_s: float, out_path: Optional[str] = None) -> int:
+    """Run the full 3-minute demo and write an aggregated markdown report.
+
+    - budget_s: total seconds for the end-to-end flow
+    - out_path: optional report path; defaults under `reports/api_demo/`
+    Returns 0 on success.
+    """
     report = Path(out_path) if out_path else (REPORTS / "demo_api_3_min.md")
     _init_report(report)
 

@@ -124,3 +124,40 @@ class Report:
         return self.out_path
 
 
+def write_simple_header(out_path: os.PathLike | str, title: str, preface_lines: Iterable[str] = ()) -> Path:
+    """Write a simple report header using Report, creating directories as needed.
+
+    - out_path: destination markdown path
+    - title: H1 title text
+    - preface_lines: optional extra lines under the header (e.g., system info)
+    """
+    rpt = Report(out_path)
+    rpt.title(title).preface(list(preface_lines)).write()
+    return rpt.out_path
+
+
+def append_lines(report_path: os.PathLike | str, lines: Iterable[str]) -> None:
+    """Append raw lines to an existing markdown report, adding a trailing newline.
+
+    Designed for runners to record small progress notes without inlining
+    markdown assembly logic in orchestration modules.
+    """
+    path = resolve_report_path(report_path)
+    with path.open("a") as f:
+        f.write("\n".join(list(lines)) + "\n")
+
+
+def append_section_from_file(report_path: os.PathLike | str, section_title: str, fragment_path: os.PathLike | str) -> None:
+    """Append a markdown section header and the contents of a fragment file.
+
+    The fragment's top-level H1 (if present) is stripped to keep a single H1
+    in the destination report.
+    """
+    path = resolve_report_path(report_path)
+    frag = Path(fragment_path)
+    content = strip_h1_from_fragment(frag.read_text())
+    with path.open("a") as f:
+        f.write(f"\n## {section_title}\n\n")
+        f.write(content)
+        if not content.endswith("\n"):
+            f.write("\n")

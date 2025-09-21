@@ -2,44 +2,40 @@
 
 from __future__ import annotations
 
+"""Generate an API compatibility matrix across backends.
+
+This script is an orchestrator: it builds the matrix and delegates all
+markdown rendering to `src/mdreport`. No side effects at import time.
+"""
+
+import argparse
 import sys
 from typing import Callable, Dict, List, Tuple
 from pathlib import Path
-from datetime import datetime
 
 from unipandas import configure_backend
 from unipandas.io import read_csv
 from unipandas.frame import Frame
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DATA = ROOT / "data"
-REPORTS = ROOT / "reports" / "api_demo"
-REPORTS.mkdir(exist_ok=True)
-OUT = REPORTS / "compatibility.md"
 
 # Use centralized list from scripts/utils.py to avoid drift
-try:
-    from .utils import Backends as ALL_BACKENDS  # type: ignore
-    Backends = ALL_BACKENDS
-except Exception:
-    try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _sys.path.append(str(_Path(__file__).resolve().parents[1]))
-        from utils import Backends as ALL_BACKENDS  # type: ignore
-        Backends = ALL_BACKENDS
-    except Exception:
-        Backends = ["pandas", "dask", "pyspark", "polars", "duckdb", "numpy", "numba"]
+from scripts.utils import Backends  # type: ignore
 
 
 def make_dataset() -> Path:
+    """Ensure and return a tiny CSV for compatibility checks (idempotent)."""
     DATA.mkdir(exist_ok=True)
     p = DATA / "compat_small.csv"
-    if not p.exists():
-        import pandas as pd
+    if p.exists():
+        return p
+    import pandas as pd  # type: ignore
 
-        pdf = pd.DataFrame({"a": [1, 2, -1], "b": [10, -5, 0], "cat": ["x", "y", "x"]})
-        pdf.to_csv(p, index=False)
+    pdf = pd.DataFrame({"a": [1, 2, -1], "b": [10, -5, 0], "cat": ["x", "y", "x"]})
+    pdf.to_csv(p, index=False)
     return p
 
 
@@ -98,28 +94,15 @@ OPS: List[Tuple[str, Callable[[Frame], Frame]]] = [
 
 
 def try_ops_for_backend(backend: str, path: Path) -> Dict[str, str]:
+    """Attempt all ops on a given backend, returning status per op name."""
     results: Dict[str, str] = {}
-    # Optional availability short-circuit via scripts/utils.py
-    _check_available = None
-    try:
-        from .utils import check_available as _check_available  # type: ignore
-    except Exception:
-        try:
-            import sys as _sys
-            from pathlib import Path as _Path
-            _sys.path.append(str(_Path(__file__).resolve().parents[1]))
-            from utils import check_available as _check_available  # type: ignore
-        except Exception:
-            _check_available = None  # type: ignore
+    # Optional availability short-circuit
+    from scripts.utils import check_available as _check_available  # type: ignore
 
-    if _check_available is not None:
-        try:
-            if not _check_available(backend):
-                for name, _ in OPS:
-                    results[name] = "unavailable"
-                return results
-        except Exception:
-            pass
+    if not _check_available(backend):
+        for name, _ in OPS:
+            results[name] = "unavailable"
+        return results
     try:
         configure_backend(backend)
     except Exception:
@@ -144,27 +127,21 @@ def try_ops_for_backend(backend: str, path: Path) -> Dict[str, str]:
     return results
 
 
-def format_fixed_width(headers: List[str], rows: List[List[str]]) -> str:
-    widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
-
-    def fmt(vals: List[str]) -> str:
-        parts: List[str] = []
-        for i, v in enumerate(vals):
-            align_left = i == 0
-            parts.append(v.ljust(widths[i]) if align_left else v.rjust(widths[i]))
-        return "  " + "  ".join(parts)
-
-    lines: List[str] = [fmt(headers), "  " + "  ".join(["-" * w for w in widths])]
-    for row in rows:
-        lines.append(fmt(row))
-    return "\n".join(lines)
+def _headers() -> List[str]:
+    return ["operation", *Backends]
 
 
-def main():
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Build an API compatibility matrix and write Markdown.")
+    p.add_argument("--md-out", default=str(ROOT / "reports" / "api_demo" / "compatibility.md"))
+    return p.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
     path = make_dataset()
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    hdr = ["operation"] + Backends
+    hdr = _headers()
     rows: List[List[str]] = []
 
     backend_to_results: Dict[str, Dict[str, str]] = {}
@@ -177,17 +154,11 @@ def main():
             row.append(backend_to_results[backend].get(op_name, "-"))
         rows.append(row)
 
-    # Prefer mdreport for consistency; fallback to existing behavior
-    try:
-        from mdreport import Report  # type: ignore
-    except Exception:
-        content = ["# Compatibility matrix", "", f"Generated at: {ts}", "", "```text", format_fixed_width(hdr, rows), "```", ""]
-        OUT.write_text("\n".join(content))
-        print("Wrote", OUT)
-    else:
-        rpt = Report(OUT)
-        rpt.title("Compatibility matrix").preface([f"Generated at: {ts}", ""]).table(hdr, rows, align_from=1, style="fixed").write()
-        print("Wrote", OUT)
+    # Delegate Markdown rendering
+    from mdreport.api_demo import render_compat_matrix  # type: ignore
+
+    render_compat_matrix(args.md_out, hdr, rows)
+    return 0
 
 
 if __name__ == "__main__":

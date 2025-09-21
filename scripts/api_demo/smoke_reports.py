@@ -13,10 +13,10 @@ PY = sys.executable or "python3"
 
 
 def run_cmd(cmd: list[str], env: dict[str, str] | None = None) -> None:
+    """Run a command with optional env; no console output here (per rules)."""
     e = os.environ.copy()
     if env:
         e.update(env)
-    print("$", " ".join(cmd))
     subprocess.run(cmd, check=True, env=e)
 
 
@@ -91,8 +91,6 @@ def main() -> int:
     brc_scale = ROOT / "scripts" / "brc" / "brc_scale_runner.py"
     if brc_scale.exists():
         run_cmd([PY, str(brc_scale), "--budget", "60", "--operation", "groupby"])  # 1-minute budget
-
-    print("Smoke reports generated under", reports)
     return 0
 
 
