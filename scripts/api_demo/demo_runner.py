@@ -20,8 +20,8 @@ BENCH = ROOT / "scripts" / "api_demo" / "bench_backends.py"
 COMPAT = ROOT / "scripts" / "api_demo" / "compat_matrix.py"
 REL = ROOT / "scripts" / "api_demo" / "relational_bench.py"
 BRC = ROOT / "scripts" / "brc" / "billion_row_challenge.py"
-BRC_OM = ROOT / "scripts" / "brc" / "billion_row_om_runner.py"
-BRC_1M = ROOT / "scripts" / "brc" / "brc_one_minute_runner.py"
+BR01 = ROOT / "scripts" / "brc" / "01_one_minute_groupby.py"
+BR02 = ROOT / "scripts" / "brc" / "02_fast_3min_groupby.py"
 PIPELINE = ROOT / "scripts" / "brc" / "brc_jsonl_pipeline.py"
 
 PY = sys.executable or "python3"
@@ -181,18 +181,24 @@ def _maybe_brc_smoke(report: Path, deadline: float) -> None:
         _append_lines(report, ["", "## Skipped due to 3-minute budget", "- billion_row_challenge (timeout)", ""])  # minimal note
 
 
-def _maybe_brc_one_minute(deadline: float) -> None:
-    """Try the BRC one-minute runner within a 30s slice."""
+def _maybe_brc_one_minute(report: Path, deadline: float) -> None:
+    """Run the 01_one_minute_groupby script within a 30s slice and attach."""
     if _deadline_passed(deadline):
         return
-    _run_with_timeout([PY, str(BRC_1M), "--budget", "30"], _remaining(deadline, 30.0))
+    _run_with_timeout([PY, str(BR01), "--budget", "30"], _remaining(deadline, 30.0))
+    frag = ROOT / "reports" / "brc" / "brc_under_1min_capacity.md"
+    if frag.exists():
+        _append_section(report, "1-minute BRC capacity (per backend)", frag)
 
 
-def _maybe_brc_om(deadline: float) -> None:
-    """Try the order-of-magnitude BRC runner within a 30s slice."""
+def _maybe_brc_fast_3min(report: Path, deadline: float) -> None:
+    """Run the 02_fast_3min_groupby script in a 30s slice and attach."""
     if _deadline_passed(deadline):
         return
-    _run_with_timeout([PY, str(BRC_OM), "--budgets", "30"], _remaining(deadline, 30.0))
+    _run_with_timeout([PY, str(BR02), "--budget", "30"], _remaining(deadline, 30.0))
+    frag = ROOT / "reports" / "brc" / "brc_fast_3min_groupby.md"
+    if frag.exists():
+        _append_section(report, "Fast backends: 3-minute capacity", frag)
 
 
 def run_demo_flow(budget_s: float, out_path: Optional[str] = None) -> int:
@@ -215,10 +221,10 @@ def run_demo_flow(budget_s: float, out_path: Optional[str] = None) -> int:
     _maybe_rel(report, deadline)
     # 4) BRC smoke
     _maybe_brc_smoke(report, deadline)
-    # 5) BRC one-minute runner
-    _maybe_brc_one_minute(deadline)
-    # 6) BRC OM runner
-    _maybe_brc_om(deadline)
+    # 5) 1-minute capacity summary (01)
+    _maybe_brc_one_minute(report, deadline)
+    # 6) Fast backends 3-minute capacity (02)
+    _maybe_brc_fast_3min(report, deadline)
     return 0
 
 
