@@ -234,6 +234,18 @@ def _total_rows_from_parquet(chunks: List[Path]) -> Optional[int]:
     return total if any_parquet else None
 
 
+# Backwards-compat alias for tests referencing `billion_row_om_runner._count_input_rows`
+def _count_input_rows(rows: int, data_glob: Optional[str]) -> Optional[int]:
+    if data_glob:
+        try:
+            import glob as _glob
+            import pyarrow.parquet as _pq  # type: ignore
+            return sum(int(_pq.ParquetFile(p).metadata.num_rows) for p in _glob.glob(data_glob))
+        except Exception:
+            return None
+    return rows
+
+
 
 
  
